@@ -8,18 +8,19 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/modals/Modal';
 import { conditionLabels } from '../data/mockData';
-import { listingsApi, reviewsApi, wishlistApi, messagesApi } from '../lib/api';
+import { listingsApi, reviewsApi, messagesApi } from '../lib/api';
 import { toListing, toReview } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useWishlist } from '../contexts/WishlistContext';
 import type { Listing, Review } from '../types';
 
 export function ListingDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user: authUser, isAuthenticated } = useAuth();
+  const { isWishlisted: checkWishlisted, toggle: toggleWishlist } = useWishlist();
   const [selectedImage, setSelectedImage] = useState(0);
-  const [isWishlisted, setIsWishlisted] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
@@ -62,6 +63,7 @@ export function ListingDetailPage() {
   }
 
   const listing = listingData;
+  const wishlisted = checkWishlisted(listing.id);
   const reviews = reviewsData ?? [];
   const similarListings = (similarData ?? []).filter((l) => l.id !== id).slice(0, 4);
   const otherListings: Listing[] = [];
@@ -79,16 +81,9 @@ export function ListingDetailPage() {
     } catch { navigate('/messages'); } finally { setMessagingLoading(false); }
   };
 
-  const handleWishlistToggle = async () => {
+  const handleWishlistToggle = () => {
     if (!isAuthenticated) { navigate('/login'); return; }
-    try {
-      if (isWishlisted) {
-        await wishlistApi.remove(id!);
-      } else {
-        await wishlistApi.add(id!);
-      }
-      setIsWishlisted(!isWishlisted);
-    } catch { /* ignore */ }
+    toggleWishlist(id!);
   };
 
   const savings = listing.originalPrice ? listing.originalPrice - listing.price : 0;
@@ -122,12 +117,12 @@ export function ListingDetailPage() {
               <button
                 onClick={handleWishlistToggle}
                 className={`absolute top-4 right-4 p-3 rounded-full transition-all ${
-                  isWishlisted
+                  wishlisted
                     ? 'bg-thrift-error text-white'
                     : 'bg-thrift-surface/80 backdrop-blur-sm text-thrift-text-secondary hover:text-thrift-error'
                 }`}
               >
-                <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
+                <Heart className={`w-5 h-5 ${wishlisted ? 'fill-current' : ''}`} />
               </button>
             </div>
 
@@ -222,15 +217,14 @@ export function ListingDetailPage() {
               {/* Action Buttons */}
               <div className="space-y-3">
                 {!isOwnListing && (
-                  <Link to={`/checkout/${listing.id}`}>
-                    <Button
-                      className="w-full"
-                      size="lg"
-                      icon={<ShoppingCart className="w-5 h-5" />}
-                    >
-                      Buy Now — NPR {listing.price.toLocaleString()}
-                    </Button>
-                  </Link>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    icon={<ShoppingCart className="w-5 h-5" />}
+                    onClick={() => navigate(isAuthenticated ? `/checkout/${listing.id}` : '/login')}
+                  >
+                    Buy Now — NPR {listing.price.toLocaleString()}
+                  </Button>
                 )}
                 {!isOwnListing && (
                   <Button
@@ -248,13 +242,13 @@ export function ListingDetailPage() {
                   <button
                     onClick={handleWishlistToggle}
                     className={`w-full flex items-center justify-center gap-2 px-4 py-2 rounded-btn border transition-all ${
-                      isWishlisted
+                      wishlisted
                         ? 'border-thrift-error bg-thrift-error/5 text-thrift-error'
                         : 'border-thrift-border text-thrift-text-secondary hover:border-thrift-primary hover:text-thrift-primary'
                     }`}
                   >
-                    <Heart className={`w-5 h-5 ${isWishlisted ? 'fill-current' : ''}`} />
-                    {isWishlisted ? 'Wishlisted' : 'Add to Wishlist'}
+                    <Heart className={`w-5 h-5 ${wishlisted ? 'fill-current' : ''}`} />
+                    {wishlisted ? 'Wishlisted' : 'Add to Wishlist'}
                   </button>
                 )}
               </div>

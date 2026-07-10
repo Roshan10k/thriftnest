@@ -1,9 +1,10 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Heart, MapPin, Clock, MessageCircle } from 'lucide-react';
 import type { Listing } from '../../types';
 import { Badge } from '../ui/Badge';
-import { useState } from 'react';
 import { conditionLabels } from '../../data/mockData';
+import { useAuth } from '../../contexts/AuthContext';
+import { useWishlist } from '../../contexts/WishlistContext';
 
 interface ListingCardProps {
   listing: Listing;
@@ -11,7 +12,10 @@ interface ListingCardProps {
 }
 
 export function ListingCard({ listing, variant = 'default' }: ListingCardProps) {
-  const [isWishlisted, setIsWishlisted] = useState(false);
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+  const { isWishlisted, toggle } = useWishlist();
+  const wishlisted = isWishlisted(listing.id);
 
   const conditionVariant = {
     'brand-new': 'success' as const,
@@ -76,16 +80,18 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
         <button
           onClick={(e) => {
             e.preventDefault();
-            setIsWishlisted(!isWishlisted);
+            e.stopPropagation();
+            if (!isAuthenticated) { navigate('/login'); return; }
+            toggle(listing.id);
           }}
           className={`absolute top-3 right-3 p-2 rounded-full transition-all duration-200 ${
-            isWishlisted
+            wishlisted
               ? 'bg-thrift-error text-white'
               : 'bg-thrift-surface/80 backdrop-blur-sm text-thrift-text-secondary hover:text-thrift-error'
           }`}
-          aria-label={isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
+          aria-label={wishlisted ? 'Remove from wishlist' : 'Add to wishlist'}
         >
-          <Heart className={`w-4 h-4 ${isWishlisted ? 'fill-current' : ''}`} />
+          <Heart className={`w-4 h-4 ${wishlisted ? 'fill-current' : ''}`} />
         </button>
       </div>
 
