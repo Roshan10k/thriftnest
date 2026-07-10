@@ -34,10 +34,11 @@ export function RegisterPage() {
   const getPasswordStrength = (password: string) => {
     let strength = 0;
     const checks = {
-      length: password.length >= 12,
+      length: password.length >= 8,
       uppercase: /[A-Z]/.test(password),
+      lowercase: /[a-z]/.test(password),
       number: /\d/.test(password),
-      special: /[!@#$%^&*(),.?":{}|<>]/.test(password),
+      special: /[^A-Za-z0-9]/.test(password),
     };
 
     Object.values(checks).forEach((check) => {
@@ -49,8 +50,8 @@ export function RegisterPage() {
 
   const { strength, checks } = getPasswordStrength(formData.password);
 
-  const strengthLabels = ['Weak', 'Fair', 'Strong', 'Very Strong'];
-  const strengthColors = ['bg-thrift-error', 'bg-thrift-warning', 'bg-thrift-success', 'bg-thrift-primary'];
+  const strengthLabels = ['Weak', 'Fair', 'Good', 'Strong', 'Very Strong'];
+  const strengthColors = ['bg-thrift-error', 'bg-thrift-error', 'bg-thrift-warning', 'bg-thrift-success', 'bg-thrift-primary'];
 
   const validateStep1 = () => {
     const newErrors: Record<string, string> = {};
@@ -71,7 +72,7 @@ export function RegisterPage() {
 
     if (!formData.password) {
       newErrors.password = 'Password is required';
-    } else if (strength < 4) {
+    } else if (strength < 5) {
       newErrors.password = 'Please meet all password requirements';
     }
 
@@ -298,7 +299,7 @@ export function RegisterPage() {
                   {formData.password && (
                     <div className="mt-2">
                       <div className="flex gap-1 mb-1">
-                        {[0, 1, 2, 3].map((i) => (
+                        {[0, 1, 2, 3, 4].map((i) => (
                           <div
                             key={i}
                             className={`h-1 flex-1 rounded-full transition-colors ${
@@ -317,8 +318,9 @@ export function RegisterPage() {
                   {formData.password && (
                     <div className="mt-3 space-y-1">
                       {[
-                        { key: 'length', label: 'At least 12 characters' },
+                        { key: 'length', label: 'At least 8 characters' },
                         { key: 'uppercase', label: 'Uppercase letter' },
+                        { key: 'lowercase', label: 'Lowercase letter' },
                         { key: 'number', label: 'Number' },
                         { key: 'special', label: 'Special character' },
                       ].map((req) => (

@@ -59,6 +59,21 @@ function SellerRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+  if (isLoading) return null;
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== 'admin') return <Navigate to={user.role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer'} replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <ErrorBoundary>
@@ -84,27 +99,27 @@ export default function App() {
           <Route path="/listings/:id" element={<ListingDetailPage />} />
 
           {/* Checkout */}
-          <Route path="/checkout/:id?" element={<CheckoutPage />} />
+          <Route path="/checkout/:id?" element={<RequireAuth><CheckoutPage /></RequireAuth>} />
 
           {/* User pages */}
-          <Route path="/messages" element={<MessagesPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/wishlist" element={<WishlistPage />} />
-          <Route path="/orders" element={<OrdersPage />} />
-          <Route path="/orders/:id" element={<OrderDetailPage />} />
-          <Route path="/profile" element={<UserProfilePage />} />
+          <Route path="/messages" element={<RequireAuth><MessagesPage /></RequireAuth>} />
+          <Route path="/notifications" element={<RequireAuth><NotificationsPage /></RequireAuth>} />
+          <Route path="/wishlist" element={<RequireAuth><WishlistPage /></RequireAuth>} />
+          <Route path="/orders" element={<RequireAuth><OrdersPage /></RequireAuth>} />
+          <Route path="/orders/:id" element={<RequireAuth><OrderDetailPage /></RequireAuth>} />
+          <Route path="/profile" element={<RequireAuth><UserProfilePage /></RequireAuth>} />
           <Route path="/users/:id" element={<UserProfilePage />} />
-          <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/settings" element={<RequireAuth><SettingsPage /></RequireAuth>} />
 
           {/* Dashboards */}
-          <Route path="/dashboard/buyer" element={<BuyerDashboard />} />
-          <Route path="/dashboard/seller" element={<SellerDashboard />} />
+          <Route path="/dashboard/buyer" element={<RequireAuth><BuyerDashboard /></RequireAuth>} />
+          <Route path="/dashboard/seller" element={<RequireAuth><SellerDashboard /></RequireAuth>} />
           {/* Seller orders-to-ship: redirect to dashboard where that section lives */}
           <Route path="/orders/ship" element={<Navigate to="/dashboard/seller" replace />} />
 
           {/* Admin */}
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="/admin/*" element={<AdminDashboard />} />
+          <Route path="/admin" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
+          <Route path="/admin/*" element={<RequireAdmin><AdminDashboard /></RequireAdmin>} />
 
           {/* 404 */}
           <Route path="*" element={<NotFoundPage />} />
