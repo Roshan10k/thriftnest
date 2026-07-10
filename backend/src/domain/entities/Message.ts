@@ -1,4 +1,5 @@
 export type MessageType = 'text' | 'offer' | 'image' | 'system';
+export type OfferStatus = 'pending' | 'accepted' | 'declined';
 
 export interface Message {
   id: string;
@@ -7,6 +8,7 @@ export interface Message {
   content: string;
   type: MessageType;
   offerAmount?: number;
+  offerStatus?: OfferStatus;
   imageUrl?: string;
   read: boolean;
   createdAt: Date;
@@ -17,6 +19,7 @@ export interface Conversation {
   participantIds: string[];
   listingId?: string;
   lastMessageId?: string;
+  agreedPrice?: number;
   unreadCounts: Record<string, number>;
   createdAt: Date;
   updatedAt: Date;
