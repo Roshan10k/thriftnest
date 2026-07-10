@@ -120,6 +120,7 @@ export function toMessage(raw: Raw): Message {
     content: str(raw.content),
     type: (raw.type as Message['type']) ?? 'text',
     offerAmount: raw.offerAmount != null ? num(raw.offerAmount) : undefined,
+    offerStatus: raw.offerStatus as Message['offerStatus'] | undefined,
     timestamp: str(raw.createdAt ?? raw.timestamp),
     read: bool(raw.read),
   };
@@ -132,5 +133,6 @@ export function toConversation(raw: Raw): Conversation {
     listing: raw.listing ? toListing(raw.listing as Raw) : undefined,
     lastMessage: raw.lastMessage ? toMessage(raw.lastMessage as Raw) : ({} as Message),
     unreadCount: num(raw.unreadCount),
+    agreedPrice: raw.agreedPrice != null ? num(raw.agreedPrice) : undefined,
   };
 }

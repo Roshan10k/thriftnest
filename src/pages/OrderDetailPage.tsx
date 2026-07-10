@@ -9,6 +9,7 @@ import { Modal } from '../components/modals/Modal';
 import { ordersApi, reviewsApi } from '../lib/api';
 import { toOrder } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
+import { useAuth } from '../contexts/AuthContext';
 import type { OrderStatus } from '../types';
 
 const statusConfig: Record<OrderStatus, { label: string; variant: 'success' | 'warning' | 'error' | 'neutral' }> = {
@@ -20,16 +21,21 @@ const statusConfig: Record<OrderStatus, { label: string; variant: 'success' | 'w
   refunded: { label: 'Refunded', variant: 'neutral' },
 };
 
-const trackingSteps = [
-  { id: 'confirmed', label: 'Order Confirmed', desc: 'Payment received and order placed', done: true },
-  { id: 'processing', label: 'Processing', desc: 'Seller is preparing your item', done: true },
-  { id: 'shipped', label: 'Shipped', desc: 'Item dispatched via courier', done: true },
-  { id: 'out', label: 'Out for Delivery', desc: 'On its way to your address', done: false },
-  { id: 'delivered', label: 'Delivered', desc: 'Item successfully delivered', done: false },
-];
+function buildTrackingSteps(status: OrderStatus) {
+  const rank: Record<string, number> = { 'payment-confirmed': 1, shipped: 2, delivered: 3 };
+  const s = rank[status] ?? 0;
+  return [
+    { id: 'confirmed', label: 'Order Confirmed', desc: 'Payment received and order placed', done: s >= 1 },
+    { id: 'processing', label: 'Processing', desc: 'Seller is preparing your item', done: s >= 1 },
+    { id: 'shipped', label: 'Shipped', desc: 'Item dispatched via courier', done: s >= 2 },
+    { id: 'out', label: 'Out for Delivery', desc: 'On its way to your address', done: s >= 3 },
+    { id: 'delivered', label: 'Delivered', desc: 'Item successfully delivered', done: s >= 3 },
+  ];
+}
 
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user: authUser } = useAuth();
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [reviewText, setReviewText] = useState('');
@@ -50,6 +56,17 @@ export function OrderDetailPage() {
       await refetch();
     } catch { /* keep pending on failure */ }
     finally { setPaying(false); }
+  };
+
+  const [delivering, setDelivering] = useState(false);
+  const handleMarkDelivered = async () => {
+    if (!order) return;
+    setDelivering(true);
+    try {
+      await ordersApi.updateStatus(order.id, { status: 'delivered' });
+      await refetch();
+    } catch { /* keep shipped on failure */ }
+    finally { setDelivering(false); }
   };
 
   const handleSubmitReview = async () => {
@@ -82,6 +99,8 @@ export function OrderDetailPage() {
   }
 
   const cfg = statusConfig[order.status];
+  const isBuyer = authUser?.id === order.buyer.id;
+  const trackingSteps = buildTrackingSteps(order.status);
 
   return (
     <div className="min-h-screen bg-thrift-bg">
@@ -223,15 +242,20 @@ export function OrderDetailPage() {
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
-          {order.status === 'payment-pending' && (
+          {order.status === 'payment-pending' && isBuyer && (
             <Button loading={paying} onClick={handlePay}>
               {paying ? 'Processing…' : `Complete Payment · NPR ${order.totalAmount.toLocaleString()}`}
+            </Button>
+          )}
+          {order.status === 'shipped' && isBuyer && (
+            <Button loading={delivering} onClick={handleMarkDelivered} icon={<CheckCircle className="w-4 h-4" />}>
+              {delivering ? 'Confirming…' : 'Mark as Delivered'}
             </Button>
           )}
           <Button variant="outline" icon={<Download className="w-4 h-4" />}>
             Download Receipt
           </Button>
-          {order.status === 'delivered' && !reviewSubmitted && (
+          {order.status === 'delivered' && !reviewSubmitted && isBuyer && (
             <Button
               icon={<Star className="w-4 h-4" />}
               onClick={() => setShowReviewModal(true)}

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
 import { Check, Truck, MapPin, Shield, Clock } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
@@ -16,7 +16,9 @@ type Step = 1 | 2 | 3 | 4;
 export function CheckoutPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { user: authUser } = useAuth();
+  const negotiated = (location.state ?? {}) as { agreedPrice?: number; conversationId?: string };
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,9 +56,15 @@ export function CheckoutPage() {
     { value: 'pickup', label: 'Pickup (free)', price: 0, icon: <MapPin className="w-5 h-5" /> },
   ];
 
-  const platformFee = Math.round(listing.price * 0.05);
+  // Use the negotiated price when the buyer arrived from an accepted offer.
+  const itemPrice =
+    negotiated.agreedPrice != null && negotiated.agreedPrice > 0 && negotiated.agreedPrice <= listing.price
+      ? negotiated.agreedPrice
+      : listing.price;
+  const isNegotiated = itemPrice < listing.price;
+  const platformFee = Math.round(itemPrice * 0.05);
   const deliveryFee = formData.deliveryMethod === 'express' ? 350 : formData.deliveryMethod === 'standard' ? 150 : 0;
-  const total = listing.price + platformFee + deliveryFee;
+  const total = itemPrice + platformFee + deliveryFee;
 
   return (
     <div className="min-h-screen bg-thrift-bg">
@@ -100,14 +108,24 @@ export function CheckoutPage() {
                   <div>
                     <p className="font-medium text-thrift-text">{listing.title}</p>
                     <p className="text-sm text-thrift-text-secondary capitalize">{listing.condition.replace('-', ' ')}</p>
-                    <p className="text-lg font-semibold text-thrift-primary mt-2">NPR {listing.price.toLocaleString()}</p>
+                    <p className="text-lg font-semibold text-thrift-primary mt-2 flex items-baseline gap-2">
+                      NPR {itemPrice.toLocaleString()}
+                      {isNegotiated && (
+                        <span className="text-sm font-normal text-thrift-text-secondary line-through">
+                          NPR {listing.price.toLocaleString()}
+                        </span>
+                      )}
+                    </p>
+                    {isNegotiated && (
+                      <p className="text-xs text-thrift-success font-medium">Negotiated price applied</p>
+                    )}
                   </div>
                 </div>
 
                 <div className="space-y-2 text-sm border-t border-thrift-border pt-4">
                   <div className="flex justify-between">
                     <span className="text-thrift-text-secondary">Item price</span>
-                    <span className="text-thrift-text">NPR {listing.price.toLocaleString()}</span>
+                    <span className="text-thrift-text">NPR {itemPrice.toLocaleString()}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-thrift-text-secondary">Platform fee (5%)</span>
@@ -246,6 +264,7 @@ export function CheckoutPage() {
                           deliveryMethod: formData.deliveryMethod,
                           deliveryAddress: formData.address,
                           paymentMethod: 'stripe',
+                          conversationId: negotiated.conversationId,
                         });
                         const orderId = String((order.data as Record<string, unknown>).id ?? '');
                         setStep(4);
@@ -290,13 +309,13 @@ export function CheckoutPage() {
                 <img src={listing.images?.[0] ?? "https://placehold.co/400x300?text=No+Image"} alt="" className="w-16 h-16 rounded object-cover" />
                 <div className="flex-1">
                   <p className="text-sm font-medium text-thrift-text line-clamp-2">{listing.title}</p>
-                  <p className="text-sm text-thrift-primary font-semibold">NPR {listing.price.toLocaleString()}</p>
+                  <p className="text-sm text-thrift-primary font-semibold">NPR {itemPrice.toLocaleString()}</p>
                 </div>
               </div>
               <div className="space-y-2 text-sm border-t border-thrift-border pt-4">
                 <div className="flex justify-between text-thrift-text-secondary">
                   <span>Subtotal</span>
-                  <span>NPR {listing.price.toLocaleString()}</span>
+                  <span>NPR {itemPrice.toLocaleString()}</span>
                 </div>
                 <div className="flex justify-between text-thrift-text-secondary">
                   <span>Platform fee</span>

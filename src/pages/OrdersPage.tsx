@@ -43,6 +43,16 @@ export function OrdersPage() {
     finally { setPayingId(null); }
   };
 
+  const [deliveringId, setDeliveringId] = useState<string | null>(null);
+  const handleMarkDelivered = async (orderId: string) => {
+    setDeliveringId(orderId);
+    try {
+      await ordersApi.updateStatus(orderId, { status: 'delivered' });
+      await refetch();
+    } catch { /* keep the order shipped on failure */ }
+    finally { setDeliveringId(null); }
+  };
+
   const filtered = allOrders.filter((o) => {
     const matchSearch =
       !search ||
@@ -149,11 +159,14 @@ export function OrdersPage() {
                         </p>
                         <div className="flex gap-2">
                           {order.status === 'shipped' && (
-                            <Link to={`/orders/${order.id}`}>
-                              <Button size="sm" icon={<Truck className="w-4 h-4" />}>
-                                Track
-                              </Button>
-                            </Link>
+                            <Button
+                              size="sm"
+                              icon={<CheckCircle className="w-4 h-4" />}
+                              loading={deliveringId === order.id}
+                              onClick={() => handleMarkDelivered(order.id)}
+                            >
+                              {deliveringId === order.id ? 'Confirming…' : 'Mark as Delivered'}
+                            </Button>
                           )}
                           {order.status === 'delivered' && (
                             <Link to={`/orders/${order.id}`}>

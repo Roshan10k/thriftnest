@@ -175,6 +175,11 @@ export const messagesApi = {
       method: 'POST',
       body: JSON.stringify({ content, type, offerAmount }),
     }),
+  respondToOffer: (conversationId: string, messageId: string, action: 'accept' | 'decline' | 'counter', counterAmount?: number) =>
+    request<{ data: Record<string, unknown> }>(`/messages/${conversationId}/messages/${messageId}/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action, counterAmount }),
+    }),
 };
 
 // ─── Admin ───────────────────────────────────────────────────────────────────

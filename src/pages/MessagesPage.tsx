@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, Send, Image, Smile, DollarSign, Phone, MoreVertical, Paperclip } from 'lucide-react';
+import { Navbar } from '../components/layout/Navbar';
 import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/modals/Modal';
@@ -11,12 +12,16 @@ import type { Conversation, Message } from '../types';
 
 export function MessagesPage() {
   const { user: authUser } = useAuth();
+  const navigate = useNavigate();
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [message, setMessage] = useState('');
   const [convSearch, setConvSearch] = useState('');
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [offerAmount, setOfferAmount] = useState('');
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [counterFor, setCounterFor] = useState<string | null>(null);
+  const [counterAmount, setCounterAmount] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const selectedId = selectedConversation?.id ?? null;
@@ -88,8 +93,45 @@ export function MessagesPage() {
     } catch { /* ignore */ }
   };
 
+  const handleRespondToOffer = async (
+    messageId: string,
+    action: 'accept' | 'decline' | 'counter',
+    amount?: number,
+  ) => {
+    if (!selectedConversation) return;
+    setRespondingId(messageId);
+    try {
+      await messagesApi.respondToOffer(selectedConversation.id, messageId, action, amount);
+      // Refresh this thread and the conversation list (agreed price lives on
+      // the conversation), then re-sync the open conversation.
+      const [msgRes, convRes] = await Promise.all([
+        messagesApi.getMessages(selectedConversation.id),
+        messagesApi.getConversations(),
+      ]);
+      setMessages(msgRes.data.messages.map(toMessage));
+      const convs = convRes.data.map(toConversation);
+      setConversations(convs);
+      const fresh = convs.find((c) => c.id === selectedConversation.id);
+      if (fresh) setSelectedConversation(fresh);
+    } catch { /* ignore */ }
+    finally { setRespondingId(null); }
+  };
+
+  const handleSubmitCounter = () => {
+    const amount = parseInt(counterAmount, 10);
+    if (!counterFor || !amount || amount <= 0) return;
+    const messageId = counterFor;
+    setCounterFor(null);
+    setCounterAmount('');
+    handleRespondToOffer(messageId, 'counter', amount);
+  };
+
   const otherParticipant = (conv: Conversation) =>
     conv.participants.find((p) => p.id !== authUser?.id) ?? conv.participants[0];
+
+  const listingSellerId = selectedConversation?.listing?.seller?.id;
+  const iAmBuyer = !!listingSellerId && authUser?.id !== listingSellerId;
+  const agreedPrice = selectedConversation?.agreedPrice;
 
   const filteredConversations = conversations.filter((conv) => {
     if (!convSearch.trim()) return true;
@@ -101,7 +143,9 @@ export function MessagesPage() {
   });
 
   return (
-    <div className="h-screen flex bg-thrift-bg">
+    <div className="min-h-screen flex flex-col bg-thrift-bg">
+      <Navbar />
+      <div className="flex flex-1 min-h-0">
       {/* Conversations List */}
       <div className="w-80 border-r border-thrift-border bg-thrift-surface flex flex-col">
         <div className="p-4 border-b border-thrift-border">
@@ -208,10 +252,38 @@ export function MessagesPage() {
             </div>
           )}
 
+          {/* Agreed-price banner — buyer can check out at the negotiated price */}
+          {agreedPrice != null && iAmBuyer && selectedConversation.listing && (
+            <div className="px-6 py-3 bg-thrift-success/10 border-b border-thrift-success/30 flex items-center justify-between gap-4">
+              <p className="text-sm text-thrift-text">
+                Agreed price: <span className="font-semibold text-thrift-success">NPR {agreedPrice.toLocaleString()}</span>
+              </p>
+              <Button
+                size="sm"
+                onClick={() => navigate(`/checkout/${selectedConversation.listing!.id}`, {
+                  state: { agreedPrice, conversationId: selectedConversation.id },
+                })}
+              >
+                Buy at this price
+              </Button>
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-thrift-bg">
             {messages.map((msg) => {
               const isMine = msg.senderId === authUser?.id;
+
+              if (msg.type === 'system') {
+                return (
+                  <div key={msg.id} className="flex justify-center">
+                    <p className="text-xs text-thrift-text-secondary bg-thrift-surface border border-thrift-border rounded-full px-3 py-1 max-w-[80%] text-center">
+                      {msg.content}
+                    </p>
+                  </div>
+                );
+              }
+
               return (
                 <div key={msg.id} className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[70%] ${isMine ? 'order-2' : ''}`}>
@@ -230,6 +302,48 @@ export function MessagesPage() {
                         </p>
                       )}
                       <p className="text-sm">{msg.content}</p>
+
+                      {/* Offer status + response controls */}
+                      {msg.type === 'offer' && (
+                        <div className="mt-2 pt-2 border-t border-thrift-warning/30">
+                          {msg.offerStatus === 'accepted' && (
+                            <p className="text-xs font-semibold text-thrift-success">✓ Accepted</p>
+                          )}
+                          {msg.offerStatus === 'declined' && (
+                            <p className="text-xs font-medium text-thrift-error">Declined</p>
+                          )}
+                          {msg.offerStatus === 'pending' && isMine && (
+                            <p className="text-xs text-thrift-text-secondary">Waiting for a response…</p>
+                          )}
+                          {msg.offerStatus === 'pending' && !isMine && (
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                size="sm"
+                                loading={respondingId === msg.id}
+                                onClick={() => handleRespondToOffer(msg.id, 'accept')}
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={respondingId === msg.id}
+                                onClick={() => handleRespondToOffer(msg.id, 'decline')}
+                              >
+                                Decline
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={respondingId === msg.id}
+                                onClick={() => { setCounterFor(msg.id); setCounterAmount(''); }}
+                              >
+                                Counter
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <p className={`text-xs text-thrift-text-secondary mt-1 ${isMine ? 'text-right' : ''}`}>
                       {msg.timestamp
@@ -282,6 +396,7 @@ export function MessagesPage() {
           </div>
         </div>
       )}
+      </div>
 
       {/* Make Offer Modal */}
       <Modal
@@ -315,6 +430,31 @@ export function MessagesPage() {
         </div>
         <Button className="w-full" onClick={handleSendOffer}>
           Send Offer
+        </Button>
+      </Modal>
+
+      {/* Counter Offer Modal */}
+      <Modal
+        isOpen={counterFor !== null}
+        onClose={() => setCounterFor(null)}
+        title="Counter the Offer"
+      >
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-thrift-text mb-2">Your Counter Price (NPR)</label>
+          <input
+            type="number"
+            value={counterAmount}
+            onChange={(e) => setCounterAmount(e.target.value)}
+            placeholder="Enter your counter offer"
+            className="w-full px-4 py-2 border border-thrift-border rounded-input"
+          />
+        </div>
+        <Button
+          className="w-full"
+          disabled={!counterAmount || parseInt(counterAmount, 10) <= 0}
+          onClick={handleSubmitCounter}
+        >
+          Send Counter Offer
         </Button>
       </Modal>
     </div>

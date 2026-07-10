@@ -3,7 +3,7 @@ export interface User {
   email: string;
   name: string;
   avatar?: string;
-  role: 'buyer' | 'seller' | 'both';
+  role: 'buyer' | 'seller' | 'both' | 'admin';
   phone: string;
   location: string;
   memberSince: string;
@@ -108,6 +108,7 @@ export interface Message {
   content: string;
   type: 'text' | 'offer' | 'image' | 'system';
   offerAmount?: number;
+  offerStatus?: 'pending' | 'accepted' | 'declined';
   timestamp: string;
   read: boolean;
 }
@@ -118,6 +119,7 @@ export interface Conversation {
   listing?: Listing;
   lastMessage: Message;
   unreadCount: number;
+  agreedPrice?: number;
 }
 
 export interface Review {
