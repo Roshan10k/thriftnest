@@ -4,6 +4,7 @@ export interface User {
   id: string;
   email: string;
   passwordHash: string;
+  passwordHistory?: string[];
   name: string;
   avatar?: string;
   role: UserRole;
@@ -17,6 +18,7 @@ export interface User {
   backupCodes: string[];
   loginAttempts: number;
   lockUntil?: Date;
+  tokenVersion: number;
   rating: number;
   reviewCount: number;
   responseRate: number;

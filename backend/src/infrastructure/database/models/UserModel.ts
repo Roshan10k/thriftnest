@@ -3,6 +3,7 @@ import { Schema, model, Document } from 'mongoose';
 export interface UserDocument extends Document {
   email: string;
   passwordHash: string;
+  passwordHistory: string[];
   name: string;
   avatar?: string;
   role: 'buyer' | 'seller' | 'both' | 'admin';
@@ -33,6 +34,7 @@ const userSchema = new Schema<UserDocument>(
   {
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     passwordHash: { type: String, required: true },
+    passwordHistory: { type: [String], select: false, default: [] },
     name: { type: String, required: true, trim: true },
     avatar: { type: String },
     role: { type: String, enum: ['buyer', 'seller', 'both', 'admin'], default: 'buyer' },
@@ -65,6 +67,7 @@ const userSchema = new Schema<UserDocument>(
         delete ret._id;
         delete ret.__v;
         delete ret.passwordHash;
+        delete ret.passwordHistory;
         delete ret.mfaSecret;
         delete ret.backupCodes;
       },

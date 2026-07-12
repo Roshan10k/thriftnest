@@ -81,6 +81,13 @@ export class MongoUserRepository implements IUserRepository {
     await UserModel.findByIdAndUpdate(id, { $inc: { tokenVersion: 1 } });
   }
 
+  async getPasswordHashes(id: string): Promise<string[]> {
+    const doc = await UserModel.findById(id).select('+passwordHistory passwordHash');
+    if (!doc) return [];
+    const obj = doc.toObject() as { passwordHash?: string; passwordHistory?: string[] };
+    return [obj.passwordHash, ...(obj.passwordHistory ?? [])].filter((h): h is string => !!h);
+  }
+
   async updateMfa(id: string, secret: string, backupCodes: string[]): Promise<void> {
     await UserModel.findByIdAndUpdate(id, { $set: { mfaEnabled: true, mfaSecret: secret, backupCodes } });
   }

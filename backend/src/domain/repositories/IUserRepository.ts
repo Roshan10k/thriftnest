@@ -14,6 +14,9 @@ export interface IUserRepository {
   findAll(options: PaginationOptions): Promise<{ users: User[]; total: number }>;
   updateLoginAttempts(id: string, attempts: number, lockUntil?: Date): Promise<void>;
   resetLoginAttempts(id: string): Promise<void>;
+  incrementTokenVersion(id: string): Promise<void>;
+  /** Returns the current hash plus recent historical hashes for reuse checks. */
+  getPasswordHashes(id: string): Promise<string[]>;
   updateMfa(id: string, secret: string, backupCodes: string[]): Promise<void>;
   disableMfa(id: string): Promise<void>;
   setPasswordResetOtp(email: string, otp: string, expiry: Date): Promise<void>;
