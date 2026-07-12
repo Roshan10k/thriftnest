@@ -1,6 +1,8 @@
 import type { Listing, Category, Condition, ListingStatus } from '../entities/Listing';
 import type { PaginationOptions } from './IUserRepository';
 
+export type ListingSort = 'newest' | 'price-asc' | 'price-desc' | 'views';
+
 export interface ListingFilters {
   category?: Category;
   condition?: Condition;
@@ -10,6 +12,7 @@ export interface ListingFilters {
   sellerId?: string;
   status?: ListingStatus;
   search?: string;
+  sort?: ListingSort;
 }
 
 export interface IListingRepository {
