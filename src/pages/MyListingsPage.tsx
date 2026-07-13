@@ -9,6 +9,7 @@ import { listingsApi } from '../lib/api';
 import { toListing } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import type { Listing, ListingStatus } from '../types';
 
 const statusLabels: Record<ListingStatus, string> = {
@@ -31,13 +32,19 @@ type FilterStatus = 'all' | ListingStatus;
 
 export function MyListingsPage() {
   const { user: authUser, logout } = useAuth();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [filterStatus, setFilterStatus] = useState<FilterStatus>('all');
   const [search, setSearch] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = async () => {
+    const { confirmed } = await confirm({ title: 'Log out?', message: 'You will need to sign in again to access your account.', confirmLabel: 'Log out' });
+    if (!confirmed) return;
+    logout();
+    navigate('/');
+  };
 
   const sidebarSections = [
     {
@@ -98,7 +105,13 @@ export function MyListingsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this listing permanently? This cannot be undone.')) return;
+    const { confirmed } = await confirm({
+      title: 'Delete this listing?',
+      message: 'This permanently removes the listing and cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
     setDeletingId(id);
     try {
       await listingsApi.delete(id);

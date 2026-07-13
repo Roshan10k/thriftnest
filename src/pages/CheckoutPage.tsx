@@ -10,6 +10,7 @@ import { listingsApi, ordersApi } from '../lib/api';
 import { toListing } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 
 type Step = 1 | 2 | 3 | 4;
 
@@ -18,6 +19,7 @@ export function CheckoutPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user: authUser } = useAuth();
+  const confirm = useConfirm();
   const negotiated = (location.state ?? {}) as { agreedPrice?: number; conversationId?: string };
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
@@ -256,6 +258,12 @@ export function CheckoutPage() {
                     className="flex-1"
                     loading={submitting}
                     onClick={async () => {
+                      const { confirmed } = await confirm({
+                        title: 'Confirm your payment',
+                        message: `You are about to pay NPR ${total.toLocaleString()} for "${listing.title}". Continue?`,
+                        confirmLabel: `Pay NPR ${total.toLocaleString()}`,
+                      });
+                      if (!confirmed) return;
                       setSubmitting(true);
                       setError(null);
                       try {

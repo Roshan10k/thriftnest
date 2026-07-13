@@ -8,6 +8,8 @@ export interface User {
   location: string;
   memberSince: string;
   verified: boolean;
+  suspended?: boolean;
+  mfaEnabled?: boolean;
   rating: number;
   reviewCount: number;
   responseRate: number;

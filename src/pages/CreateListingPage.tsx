@@ -11,6 +11,7 @@ import { ListingCard } from '../components/cards/ListingCard';
 import { conditionLabels, categoryLabels } from '../data/mockData';
 import { listingsApi } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
 import { useNavigate } from 'react-router-dom';
 import type { Condition, Category } from '../types';
 
@@ -72,6 +73,7 @@ export function CreateListingPage() {
 
   const { user: authUser } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (asDraft: boolean = false) => {
@@ -85,6 +87,15 @@ export function CreateListingPage() {
     if (!formData.city) newErrors.city = 'City is required';
     setErrors(newErrors);
     if (Object.keys(newErrors).length > 0) return;
+
+    if (!asDraft) {
+      const { confirmed } = await confirm({
+        title: 'Publish this listing?',
+        message: `"${formData.title}" will go live at NPR ${Number(formData.price).toLocaleString()} and be visible to all buyers.`,
+        confirmLabel: 'Publish',
+      });
+      if (!confirmed) return;
+    }
 
     setApiError('');
     setSubmitting(true);

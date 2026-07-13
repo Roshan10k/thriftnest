@@ -46,10 +46,8 @@ export function BrowsePage() {
 
   const sortOptions = [
     { value: 'newest', label: 'Newest' },
-    { value: 'price-low', label: 'Price: Low to High' },
-    { value: 'price-high', label: 'Price: High to Low' },
-    { value: 'popular', label: 'Most Popular' },
-    { value: 'nearest', label: 'Nearest' },
+    { value: 'price-asc', label: 'Price: Low to High' },
+    { value: 'price-desc', label: 'Price: High to Low' },
   ];
 
   const locations = ['All Locations', 'Kathmandu', 'Lalitpur', 'Bhaktapur', 'Pokhara', 'Biratnagar'];
@@ -108,6 +106,9 @@ export function BrowsePage() {
       minRating: 0,
       listedWithin: 'all',
     });
+    setSortOrder('newest');
+    // Drop any ?q= left in the URL so a reload doesn't re-apply the old search.
+    if (searchParams.toString()) setSearchParams({});
   };
 
   return (

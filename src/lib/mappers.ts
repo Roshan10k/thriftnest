@@ -28,6 +28,8 @@ export function toUser(raw: Raw): User {
       ? new Date(raw.memberSince as string).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
       : '',
     verified: bool(raw.verified),
+    suspended: bool(raw.suspended),
+    mfaEnabled: bool(raw.mfaEnabled),
     rating: num(raw.rating),
     reviewCount: num(raw.reviewCount),
     responseRate: num(raw.responseRate),
