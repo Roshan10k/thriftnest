@@ -5,8 +5,10 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { DashboardNavbar } from '../components/layout/Navbar';
 import { Sidebar } from '../components/layout/Sidebar';
-import { usersApi } from '../lib/api';
+import { usersApi, api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfirm } from '../contexts/ConfirmContext';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { toUser } from '../lib/mappers';
 
 type Tab = 'profile' | 'security' | 'notifications' | 'privacy' | 'danger';
@@ -14,6 +16,7 @@ type Tab = 'profile' | 'security' | 'notifications' | 'privacy' | 'danger';
 export function SettingsPage() {
   const { user: authUser, login, logout } = useAuth();
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [showCurrentPassword, setShowCurrentPassword] = useState(false);
@@ -135,17 +138,107 @@ export function SettingsPage() {
     }
   };
 
-  const handleDeleteAccount = async () => {
-    const confirmed = window.confirm('This will permanently delete your account. Are you sure?');
+  // ─── Multi-factor authentication ───────────────────────────────────────
+  const [mfaStep, setMfaStep] = useState<'idle' | 'scan' | 'done'>('idle');
+  const [mfaLoading, setMfaLoading] = useState(false);
+  const [mfaError, setMfaError] = useState('');
+  const [mfaSetup, setMfaSetup] = useState<{ secret: string; qrCodeDataUrl: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState('');
+  const [backupCodes, setBackupCodes] = useState<string[]>([]);
+
+  const startMfaSetup = async () => {
+    setMfaLoading(true);
+    setMfaError('');
+    try {
+      const res = await api.auth.mfaSetup();
+      setMfaSetup({ secret: res.data.secret, qrCodeDataUrl: res.data.qrCodeDataUrl });
+      setMfaStep('scan');
+    } catch (err) {
+      setMfaError(err instanceof Error ? err.message : 'Could not start 2FA setup');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const confirmMfaSetup = async () => {
+    if (!mfaSetup || mfaCode.length !== 6) return;
+    setMfaLoading(true);
+    setMfaError('');
+    try {
+      const res = await api.auth.mfaConfirm(mfaSetup.secret, mfaCode);
+      setBackupCodes(res.data.backupCodes);
+      setMfaStep('done');
+      setMfaCode('');
+      if (authUser) login({ ...authUser, mfaEnabled: true });
+    } catch (err) {
+      setMfaError(err instanceof Error ? err.message : 'Invalid code — check your authenticator app');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const cancelMfaSetup = () => {
+    setMfaStep('idle');
+    setMfaSetup(null);
+    setMfaCode('');
+    setMfaError('');
+    setBackupCodes([]);
+  };
+
+  const disableMfa = async () => {
+    const { confirmed, password } = await confirm({
+      title: 'Disable two-factor authentication?',
+      message: 'This removes the extra layer of security from your account. Enter your password to continue.',
+      confirmLabel: 'Disable 2FA',
+      danger: true,
+      requirePassword: true,
+    });
     if (!confirmed) return;
-    const password = window.prompt('Enter your password to confirm:');
-    if (!password) return;
+    setMfaLoading(true);
+    setMfaError('');
+    try {
+      await api.auth.mfaDisable(password);
+      if (authUser) login({ ...authUser, mfaEnabled: false });
+      cancelMfaSetup();
+    } catch (err) {
+      setMfaError(err instanceof Error ? err.message : 'Could not disable 2FA');
+    } finally {
+      setMfaLoading(false);
+    }
+  };
+
+  const [exporting, setExporting] = useState(false);
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const res = await usersApi.exportData();
+      const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `thriftnest-data-${authUser?.name?.replace(/\s+/g, '-').toLowerCase() ?? 'export'}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch { /* ignore */ } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    const { confirmed, password } = await confirm({
+      title: 'Delete your account?',
+      message: 'This permanently deletes your account and cannot be undone. Enter your password to confirm.',
+      confirmLabel: 'Delete account',
+      danger: true,
+      requirePassword: true,
+    });
+    if (!confirmed) return;
     try {
       await usersApi.deleteAccount(password);
       logout();
       navigate('/');
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Failed to delete account');
+      setProfileError(err instanceof Error ? err.message : 'Failed to delete account');
     }
   };
 
@@ -187,11 +280,7 @@ export function SettingsPage() {
                   {/* Avatar */}
                   <div className="flex items-center gap-4 mb-6 pb-6 border-b border-thrift-border">
                     <div className="relative">
-                      <img
-                        src={authUser?.avatar ?? `https://ui-avatars.com/api/?name=${encodeURIComponent(authUser?.name ?? 'U')}&background=random`}
-                        alt="Avatar"
-                        className="w-20 h-20 rounded-full object-cover"
-                      />
+                      <UserAvatar src={authUser?.avatar} name={authUser?.name} className="w-20 h-20 rounded-full" />
                       <button
                         onClick={() => avatarInputRef.current?.click()}
                         className="absolute bottom-0 right-0 w-7 h-7 bg-thrift-primary text-white rounded-full flex items-center justify-center shadow-lift"
@@ -317,17 +406,104 @@ export function SettingsPage() {
                     </div>
                   </div>
 
-                  {/* 2FA placeholder */}
+                  {/* Two-Factor Authentication */}
                   <div className="bg-thrift-surface border border-thrift-border rounded-card p-6">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="font-semibold text-thrift-text">Two-Factor Authentication</h2>
+                      {authUser?.mfaEnabled && (
+                        <span className="inline-flex items-center gap-1.5 text-sm text-thrift-success font-medium">
+                          <Shield className="w-4 h-4" /> Enabled
+                        </span>
+                      )}
                     </div>
-                    <p className="text-sm text-thrift-text-secondary mb-6">
-                      Add an extra layer of security to your account with an authenticator app.
-                    </p>
-                    <div className="flex gap-3">
-                      <Button variant="outline" icon={<Key className="w-4 h-4" />}>Set up 2FA</Button>
-                    </div>
+
+                    {mfaError && (
+                      <p className="text-sm text-thrift-error mb-4">{mfaError}</p>
+                    )}
+
+                    {/* Enabled state */}
+                    {authUser?.mfaEnabled && mfaStep !== 'done' && (
+                      <>
+                        <p className="text-sm text-thrift-text-secondary mb-6">
+                          Your account is protected with an authenticator app. You'll be asked for a 6-digit code when you log in.
+                        </p>
+                        <Button
+                          variant="outline"
+                          className="text-thrift-error border-thrift-error hover:bg-thrift-error/5"
+                          loading={mfaLoading}
+                          onClick={disableMfa}
+                        >
+                          Disable 2FA
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Not enabled — intro + start */}
+                    {!authUser?.mfaEnabled && mfaStep === 'idle' && (
+                      <>
+                        <p className="text-sm text-thrift-text-secondary mb-6">
+                          Add an extra layer of security with an authenticator app such as Google Authenticator or Authy.
+                        </p>
+                        <Button variant="outline" icon={<Key className="w-4 h-4" />} loading={mfaLoading} onClick={startMfaSetup}>
+                          Set up 2FA
+                        </Button>
+                      </>
+                    )}
+
+                    {/* Scan step */}
+                    {mfaStep === 'scan' && mfaSetup && (
+                      <div className="space-y-4">
+                        <p className="text-sm text-thrift-text-secondary">
+                          1. Scan this QR code with your authenticator app, or enter the key manually.
+                        </p>
+                        <div className="flex flex-col sm:flex-row gap-4 items-start">
+                          <img src={mfaSetup.qrCodeDataUrl} alt="2FA QR code" className="w-40 h-40 border border-thrift-border rounded-lg bg-white p-1" />
+                          <div className="text-sm">
+                            <p className="text-thrift-text-secondary mb-1">Manual entry key:</p>
+                            <code className="block font-mono text-xs bg-thrift-bg border border-thrift-border rounded px-2 py-1.5 break-all">
+                              {mfaSetup.secret}
+                            </code>
+                          </div>
+                        </div>
+                        <p className="text-sm text-thrift-text-secondary">2. Enter the 6-digit code from your app to confirm.</p>
+                        <div className="flex gap-3 items-center">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            maxLength={6}
+                            value={mfaCode}
+                            onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+                            placeholder="000000"
+                            className="w-36 px-4 py-2 border border-thrift-border rounded-input font-mono tracking-widest text-center"
+                          />
+                          <Button loading={mfaLoading} disabled={mfaCode.length !== 6} onClick={confirmMfaSetup}>
+                            Verify &amp; Enable
+                          </Button>
+                          <Button variant="ghost" onClick={cancelMfaSetup}>Cancel</Button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Done — show backup codes once */}
+                    {mfaStep === 'done' && (
+                      <div className="space-y-4">
+                        <p className="text-sm text-thrift-success font-medium flex items-center gap-1.5">
+                          <Shield className="w-4 h-4" /> Two-factor authentication is now enabled.
+                        </p>
+                        <div className="bg-thrift-warning/10 border border-thrift-warning/40 rounded-lg p-4">
+                          <p className="text-sm font-medium text-thrift-text mb-1">Save your backup codes</p>
+                          <p className="text-xs text-thrift-text-secondary mb-3">
+                            Store these somewhere safe. Each code can be used once if you lose access to your authenticator app. They won't be shown again.
+                          </p>
+                          <div className="grid grid-cols-2 gap-2 font-mono text-sm">
+                            {backupCodes.map((code) => (
+                              <span key={code} className="bg-thrift-surface border border-thrift-border rounded px-2 py-1 text-center">{code}</span>
+                            ))}
+                          </div>
+                        </div>
+                        <Button variant="outline" onClick={() => setMfaStep('idle')}>Done</Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -380,8 +556,8 @@ export function SettingsPage() {
                       </select>
                     </div>
                     <div className="pt-4 border-t border-thrift-border">
-                      <Button variant="outline" icon={<Download className="w-4 h-4" />}>
-                        Download my data (JSON)
+                      <Button variant="outline" icon={<Download className="w-4 h-4" />} loading={exporting} onClick={handleExportData}>
+                        {exporting ? 'Preparing…' : 'Download my data (JSON)'}
                       </Button>
                     </div>
                   </div>
