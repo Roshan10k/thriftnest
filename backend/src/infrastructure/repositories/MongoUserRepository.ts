@@ -17,6 +17,7 @@ function toEntity(doc: NonNullable<Awaited<ReturnType<typeof UserModel.findById>
     bio: obj.bio as string | undefined,
     verified: obj.verified as boolean,
     emailVerified: obj.emailVerified as boolean,
+    suspended: Boolean(obj.suspended),
     mfaEnabled: obj.mfaEnabled as boolean,
     mfaSecret: obj.mfaSecret as string | undefined,
     backupCodes: (obj.backupCodes as string[]) ?? [],

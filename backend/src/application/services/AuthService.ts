@@ -86,6 +86,17 @@ export class AuthService {
       throw new AppError('Invalid email or password', 401);
     }
 
+    if (user.suspended) {
+      await this.activityLogRepo.create({
+        userId: user.id,
+        action: 'login_blocked_suspended',
+        ipAddress,
+        userAgent,
+        status: 'failed',
+      });
+      throw new AppError('Your account has been suspended. Please contact support.', 403);
+    }
+
     if (user.mfaEnabled) {
       if (!dto.mfaToken && !dto.backupCode) {
         return { mfaRequired: true, userId: user.id };

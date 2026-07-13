@@ -12,6 +12,7 @@ export interface UserDocument extends Document {
   bio?: string;
   verified: boolean;
   emailVerified: boolean;
+  suspended: boolean;
   mfaEnabled: boolean;
   mfaSecret?: string;
   backupCodes: string[];
@@ -43,6 +44,7 @@ const userSchema = new Schema<UserDocument>(
     bio: { type: String, maxlength: 300 },
     verified: { type: Boolean, default: false },
     emailVerified: { type: Boolean, default: false },
+    suspended: { type: Boolean, default: false },
     mfaEnabled: { type: Boolean, default: false },
     mfaSecret: { type: String, select: false },
     backupCodes: { type: [String], select: false, default: [] },

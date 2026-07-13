@@ -13,6 +13,7 @@ export interface User {
   bio?: string;
   verified: boolean;
   emailVerified: boolean;
+  suspended?: boolean;
   mfaEnabled: boolean;
   mfaSecret?: string;
   backupCodes: string[];
