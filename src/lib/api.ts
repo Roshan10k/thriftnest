@@ -1,24 +1,45 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
-function getToken() {
-  return localStorage.getItem('accessToken');
-}
-
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// Auth tokens live in HttpOnly cookies set by the server, so the browser sends
+// them automatically with `credentials: 'include'` — the frontend never reads
+// or stores them (defends against XSS token theft).
+async function rawFetch(path: string, options: RequestInit): Promise<Response> {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
-  if (!(options.body instanceof FormData)) {
+  if (options.body && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
-  const token = getToken();
-  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return fetch(`${BASE_URL}${path}`, {
+    cache: 'no-store',
+    credentials: 'include',
+    ...options,
+    headers,
+  });
+}
 
-  // Bypass browser HTTP cache — prevents Express returning 304 with empty body,
-  // which causes res.json() to throw and logs the user out on page reload.
-  const res = await fetch(`${BASE_URL}${path}`, { cache: 'no-store', ...options, headers });
+let refreshing: Promise<boolean> | null = null;
+async function tryRefresh(): Promise<boolean> {
+  // Collapse concurrent refreshes into one in-flight request.
+  if (!refreshing) {
+    refreshing = rawFetch('/auth/refresh', { method: 'POST' })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => { refreshing = null; });
+  }
+  return refreshing;
+}
 
-  const data = await res.json();
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+  let res = await rawFetch(path, options);
+
+  // On an expired access token, transparently refresh once and retry.
+  if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
+    const refreshed = await tryRefresh();
+    if (refreshed) res = await rawFetch(path, options);
+  }
+
+  const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(data.message ?? 'Request failed', res.status, data.code);
   return data;
 }
@@ -36,18 +57,27 @@ export class ApiError extends Error {
 // ─── Auth ────────────────────────────────────────────────────────────────────
 export const authApi = {
   register: (body: { email: string; password: string; name: string; role: string; phone?: string }) =>
-    request<{ data: { user: Record<string, unknown>; accessToken: string; refreshToken: string } }>(
+    request<{ data: { user: Record<string, unknown> } }>(
       '/auth/register', { method: 'POST', body: JSON.stringify(body) },
     ),
   login: (body: { email: string; password: string; mfaToken?: string; backupCode?: string }) =>
-    request<{ data: { mfaRequired?: true; userId?: string; user?: Record<string, unknown>; accessToken?: string; refreshToken?: string } }>(
+    request<{ data: { mfaRequired?: true; userId?: string; user?: Record<string, unknown> } }>(
       '/auth/login', { method: 'POST', body: JSON.stringify(body) },
     ),
-  refresh: (refreshToken: string) =>
-    request<{ data: { accessToken: string; refreshToken: string } }>(
-      '/auth/refresh', { method: 'POST', body: JSON.stringify({ refreshToken }) },
-    ),
+  logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
   me: () => request<{ data: Record<string, unknown> }>('/auth/me'),
+  mfaSetup: () =>
+    request<{ data: { secret: string; otpauthUrl: string; qrCodeDataUrl: string } }>(
+      '/auth/mfa/setup', { method: 'POST' },
+    ),
+  mfaConfirm: (secret: string, token: string) =>
+    request<{ data: { backupCodes: string[] } }>(
+      '/auth/mfa/confirm', { method: 'POST', body: JSON.stringify({ secret, token }) },
+    ),
+  mfaDisable: (password: string) =>
+    request<{ success: boolean }>(
+      '/auth/mfa', { method: 'DELETE', body: JSON.stringify({ password }) },
+    ),
   setupMfa: () =>
     request<{ data: { secret: string; qrCodeDataUrl: string; backupCodes: string[] } }>(
       '/auth/mfa/setup', { method: 'POST' },
@@ -75,6 +105,7 @@ export const usersApi = {
   },
   changePassword: (body: { currentPassword: string; newPassword: string }) =>
     request<{ success: boolean }>('/users/me/change-password', { method: 'POST', body: JSON.stringify(body) }),
+  exportData: () => request<{ data: Record<string, unknown> }>('/users/me/export'),
   deleteAccount: (password: string) =>
     request<{ success: boolean }>('/users/me', { method: 'DELETE', body: JSON.stringify({ password }) }),
 };
@@ -195,20 +226,11 @@ export const adminApi = {
   logs: (page = 1, limit = 50) =>
     request<{ data: { logs: Record<string, unknown>[]; total: number } }>(`/admin/logs?page=${page}&limit=${limit}`),
   banUser: (id: string) => request<{ success: boolean }>(`/admin/users/${id}/ban`, { method: 'PATCH' }),
+  unbanUser: (id: string) => request<{ success: boolean }>(`/admin/users/${id}/unban`, { method: 'PATCH' }),
   deleteUser: (id: string) => request<{ success: boolean }>(`/admin/users/${id}`, { method: 'DELETE' }),
   removeListing: (id: string) => request<{ success: boolean }>(`/admin/listings/${id}/remove`, { method: 'PATCH' }),
+  resolveOrder: (id: string) => request<{ success: boolean }>(`/admin/orders/${id}/resolve`, { method: 'PATCH' }),
 };
-
-// ─── Token helpers ───────────────────────────────────────────────────────────
-export function saveTokens(accessToken: string, refreshToken: string) {
-  localStorage.setItem('accessToken', accessToken);
-  localStorage.setItem('refreshToken', refreshToken);
-}
-
-export function clearTokens() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-}
 
 // Backwards-compat named export used by auth pages
 export const api = { auth: authApi };

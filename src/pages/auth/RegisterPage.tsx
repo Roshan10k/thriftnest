@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Leaf, User, Mail, Phone, Eye, EyeOff, Check, ShoppingCart, Package, Repeat } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { api, ApiError, saveTokens } from '../../lib/api';
+import { api, ApiError } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { toUser } from '../../contexts/AuthContext';
 
@@ -84,8 +84,11 @@ export function RegisterPage() {
     return Object.keys(newErrors).length === 0;
   };
 
+  // Sellers land on the seller dashboard; buyers and "both" users land on the
+  // buyer dashboard (their home), and "both" users can switch to selling from
+  // the account menu / dashboard switcher.
   const dashboardForRole = (role: Role | null) =>
-    role === 'seller' || role === 'both' ? '/dashboard/seller' : '/dashboard/buyer';
+    role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer';
 
   const handleStep1Next = () => {
     if (validateStep1()) {
@@ -110,9 +113,8 @@ export function RegisterPage() {
         role: formData.role,
         phone: formData.phone !== '+977 ' ? formData.phone : undefined,
       });
-      const { user, accessToken, refreshToken } = res.data;
-      saveTokens(accessToken, refreshToken);
-      login(toUser(user), accessToken, refreshToken);
+      const { user } = res.data;
+      login(toUser(user));
       setStep(3);
     } catch (err) {
       setApiError(err instanceof ApiError ? err.message : 'Registration failed. Please try again.');

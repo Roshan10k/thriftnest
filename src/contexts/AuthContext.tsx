@@ -1,11 +1,11 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from 'react';
 import type { User } from '../types';
-import { api, saveTokens, clearTokens } from '../lib/api';
+import { api } from '../lib/api';
 
 interface AuthContextValue {
   user: User | null;
   isAuthenticated: boolean;
-  login: (user: User, accessToken?: string, refreshToken?: string) => void;
+  login: (user: User) => void;
   logout: () => void;
   isLoading: boolean;
 }
@@ -23,6 +23,7 @@ function toUser(raw: Record<string, unknown>): User {
     location: String(raw.location ?? ''),
     memberSince: raw.memberSince ? new Date(raw.memberSince as string).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : '',
     verified: Boolean(raw.verified),
+    mfaEnabled: Boolean(raw.mfaEnabled),
     rating: Number(raw.rating ?? 0),
     reviewCount: Number(raw.reviewCount ?? 0),
     responseRate: Number(raw.responseRate ?? 0),
@@ -35,23 +36,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore session on mount if token exists
+  // Restore the session on mount — the HttpOnly cookie (if any) is sent
+  // automatically; /me succeeds when it's valid, otherwise we stay logged out.
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (!token) { setIsLoading(false); return; }
     api.auth.me()
       .then((res) => setUser(toUser(res.data)))
-      .catch(() => clearTokens())
+      .catch(() => setUser(null))
       .finally(() => setIsLoading(false));
   }, []);
 
-  const login = useCallback((loggedInUser: User, accessToken?: string, refreshToken?: string) => {
-    if (accessToken && refreshToken) saveTokens(accessToken, refreshToken);
+  const login = useCallback((loggedInUser: User) => {
     setUser(loggedInUser);
   }, []);
 
   const logout = useCallback(() => {
-    clearTokens();
+    // Clear the session server-side (revokes refresh token + clears cookies).
+    api.auth.logout().catch(() => {});
     setUser(null);
   }, []);
 

@@ -78,12 +78,8 @@ export function LoginPage() {
         return;
       }
 
-      const { user, accessToken, refreshToken } = payload as {
-        user: Record<string, unknown>;
-        accessToken: string;
-        refreshToken: string;
-      };
-      login(toUser(user), accessToken, refreshToken);
+      const { user } = payload as { user: Record<string, unknown> };
+      login(toUser(user));
       navigate(user.role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer');
     } catch (err) {
       const newAttempts = failedAttempts + 1;
@@ -121,8 +117,8 @@ export function LoginPage() {
     setIsSubmitting(true);
     try {
       const res = await api.auth.login({ email: formData.email, password: formData.password, mfaToken });
-      const payload = res.data as { user: Record<string, unknown>; accessToken: string; refreshToken: string };
-      login(toUser(payload.user), payload.accessToken, payload.refreshToken);
+      const payload = res.data as { user: Record<string, unknown> };
+      login(toUser(payload.user));
       navigate(payload.user.role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer');
     } catch (err) {
       setErrors({ otp: err instanceof ApiError ? err.message : 'Invalid MFA code' });
