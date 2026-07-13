@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, Send, Image, Smile, DollarSign, Phone, MoreVertical, Paperclip } from 'lucide-react';
+import { Search, Send, DollarSign } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Input } from '../components/ui/Input';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/modals/Modal';
 import { messagesApi } from '../lib/api';
@@ -174,12 +175,7 @@ export function MessagesPage() {
               }`}
             >
               <div className="relative">
-                <img
-                  src={otherParticipant(conv)?.avatar ?? 'https://picsum.photos/seed/user/200/200'}
-                  alt={otherParticipant(conv)?.name}
-                  className="w-12 h-12 rounded-full object-cover"
-                />
-                <div className="absolute bottom-0 right-0 w-3 h-3 bg-thrift-success rounded-full border-2 border-thrift-surface" />
+                <UserAvatar src={otherParticipant(conv)?.avatar} name={otherParticipant(conv)?.name} className="w-12 h-12 rounded-full" />
               </div>
               <div className="flex-1 text-left">
                 <div className="flex items-center justify-between mb-1">
@@ -214,23 +210,10 @@ export function MessagesPage() {
           {/* Header */}
           <div className="px-6 py-4 border-b border-thrift-border bg-thrift-surface flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
-                src={otherParticipant(selectedConversation)?.avatar ?? 'https://picsum.photos/seed/user/200/200'}
-                alt={otherParticipant(selectedConversation)?.name}
-                className="w-10 h-10 rounded-full object-cover"
-              />
+              <UserAvatar src={otherParticipant(selectedConversation)?.avatar} name={otherParticipant(selectedConversation)?.name} className="w-10 h-10 rounded-full" />
               <div>
                 <p className="font-medium text-thrift-text">{otherParticipant(selectedConversation)?.name}</p>
-                <p className="text-xs text-thrift-success">Active now</p>
               </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <button className="p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors">
-                <Phone className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors">
-                <MoreVertical className="w-5 h-5" />
-              </button>
             </div>
           </div>
 
@@ -360,15 +343,6 @@ export function MessagesPage() {
           {/* Input Bar */}
           <div className="px-6 py-4 bg-thrift-surface border-t border-thrift-border">
             <div className="flex items-center gap-3">
-              <button className="p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors">
-                <Paperclip className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors">
-                <Image className="w-5 h-5" />
-              </button>
-              <button className="p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors">
-                <Smile className="w-5 h-5" />
-              </button>
               <Button
                 variant="outline"
                 size="sm"

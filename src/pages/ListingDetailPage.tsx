@@ -7,6 +7,7 @@ import { ListingCard } from '../components/cards/ListingCard';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/modals/Modal';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { conditionLabels } from '../data/mockData';
 import { listingsApi, reviewsApi, messagesApi } from '../lib/api';
 import { toListing, toReview } from '../lib/mappers';
@@ -182,11 +183,7 @@ export function ListingDetailPage() {
               {/* Seller Card */}
               <div className="border-t border-thrift-border pt-4 mb-6">
                 <div className="flex items-center gap-3 mb-3">
-                  <img
-                    src={listing.seller.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(listing.seller.name || 'S')}&background=5C8A5C&color=fff&size=96`}
-                    alt={listing.seller.name}
-                    className="w-12 h-12 rounded-full object-cover"
-                  />
+                  <UserAvatar src={listing.seller.avatar} name={listing.seller.name} className="w-12 h-12 rounded-full" />
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-medium text-thrift-text">{listing.seller.name}</p>
@@ -378,11 +375,7 @@ export function ListingDetailPage() {
 
           {reviews.map((review) => (
             <div key={review.id} className="flex gap-4 mb-4 pb-4 border-b border-thrift-border last:border-0">
-              <img
-                src={review.reviewer.avatar}
-                alt={review.reviewer.name}
-                className="w-10 h-10 rounded-full object-cover"
-              />
+              <UserAvatar src={review.reviewer.avatar} name={review.reviewer.name} className="w-10 h-10 rounded-full" />
               <div>
                 <div className="flex items-center gap-2 mb-1">
                   <p className="font-medium text-thrift-text">{review.reviewer.name}</p>

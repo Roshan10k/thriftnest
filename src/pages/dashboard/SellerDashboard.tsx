@@ -8,6 +8,8 @@ import { listingsApi, ordersApi } from '../../lib/api';
 import { toListing, toOrder } from '../../lib/mappers';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { useState } from 'react';
 import type { ListingStatus } from '../../types';
 
@@ -29,12 +31,18 @@ const statusVariants: Record<ListingStatus, 'success' | 'neutral' | 'warning' | 
 
 export function SellerDashboard() {
   const { user: authUser, logout } = useAuth();
+  const confirm = useConfirm();
   const navigate = useNavigate();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [shippingId, setShippingId] = useState<string | null>(null);
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const handleLogout = async () => {
+    const { confirmed } = await confirm({ title: 'Log out?', message: 'You will need to sign in again to access your account.', confirmLabel: 'Log out' });
+    if (!confirmed) return;
+    logout();
+    navigate('/');
+  };
 
   const sidebarSections = [
     {
@@ -98,7 +106,13 @@ export function SellerDashboard() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Delete this listing permanently?')) return;
+    const { confirmed } = await confirm({
+      title: 'Delete this listing?',
+      message: 'This permanently removes the listing and cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
     setDeletingId(id);
     try {
       await listingsApi.delete(id);
@@ -287,11 +301,7 @@ export function SellerDashboard() {
                     className="p-4 border border-thrift-border bg-thrift-bg rounded-lg flex items-center justify-between"
                   >
                     <div className="flex items-center gap-4">
-                      <img
-                        src={order.buyer.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(order.buyer.name)}&background=5C8A5C&color=fff&size=40`}
-                        alt={order.buyer.name}
-                        className="w-10 h-10 rounded-full object-cover"
-                      />
+                      <UserAvatar src={order.buyer.avatar} name={order.buyer.name} className="w-10 h-10 rounded-full" />
                       <div>
                         <p className="font-medium text-thrift-text">{order.buyer.name}</p>
                         <p className="text-sm text-thrift-text-secondary">{order.listing.title}</p>

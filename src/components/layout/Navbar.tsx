@@ -1,10 +1,25 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Leaf, Menu, X, Heart, Bell, Search, LogOut, User as UserIcon, Package, Settings, ChevronDown } from 'lucide-react';
+import { Leaf, Menu, X, Heart, Bell, Search, LogOut, User as UserIcon, Package, Settings, ChevronDown, TrendingUp } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
+import { notificationsApi } from '../../lib/api';
+import { UserAvatar } from '../ui/UserAvatar';
 
-function avatarFallback(name?: string) {
-  return `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'U')}&background=5C8A5C&color=fff&size=200`;
+// Fetches the unread notification count so the bell dot reflects real state.
+// The navbar re-mounts on navigation, so the count refreshes as the user moves
+// around (e.g. after marking all read on the notifications page).
+function useUnreadCount(enabled: boolean) {
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    if (!enabled) { setUnread(0); return; }
+    let cancelled = false;
+    notificationsApi.get()
+      .then((r) => { if (!cancelled) setUnread(Number(r.data.unread) || 0); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [enabled]);
+  return unread;
 }
 
 export function Navbar() {
@@ -13,6 +28,8 @@ export function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading, logout } = useAuth();
+  const unreadCount = useUnreadCount(isAuthenticated);
+  const confirm = useConfirm();
 
   const isSeller = user?.role === 'seller';
   const isBoth = user?.role === 'both';
@@ -26,6 +43,7 @@ export function Navbar() {
       : isBoth
       ? [
           { label: 'Browse', path: '/browse' },
+          { label: 'Wishlist', path: '/wishlist' },
           { label: 'My Listings', path: '/listings' },
           { label: 'Orders', path: '/orders' },
           { label: 'Messages', path: '/messages' },
@@ -47,9 +65,11 @@ export function Navbar() {
     return location.pathname === path;
   };
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
     setIsUserMenuOpen(false);
+    const { confirmed } = await confirm({ title: 'Log out?', message: 'You will need to sign in again to access your account.', confirmLabel: 'Log out' });
+    if (!confirmed) return;
+    logout();
     navigate('/');
   };
 
@@ -112,7 +132,9 @@ export function Navbar() {
                   aria-label="Notifications"
                 >
                   <Bell className="w-5 h-5" />
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-thrift-error rounded-full" />
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1 right-1 w-2 h-2 bg-thrift-error rounded-full" />
+                  )}
                 </Link>
 
                 {/* User dropdown */}
@@ -121,11 +143,7 @@ export function Navbar() {
                     onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                     className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-full border border-thrift-border hover:border-thrift-primary/50 transition-colors"
                   >
-                    <img
-                      src={user?.avatar || avatarFallback(user?.name)}
-                      alt={user?.name}
-                      className="w-7 h-7 rounded-full object-cover"
-                    />
+                    <UserAvatar src={user?.avatar} name={user?.name} className="w-7 h-7 rounded-full" />
                     <span className="text-sm font-medium text-thrift-text">
                       {user?.name.split(' ')[0]}
                     </span>
@@ -153,13 +171,23 @@ export function Navbar() {
                             My Profile
                           </Link>
                           <Link
-                            to={(user?.role === 'seller' || user?.role === 'both') ? '/dashboard/seller' : '/dashboard/buyer'}
+                            to={user?.role === 'seller' ? '/dashboard/seller' : '/dashboard/buyer'}
                             onClick={() => setIsUserMenuOpen(false)}
                             className="flex items-center gap-3 px-4 py-2.5 text-sm text-thrift-text hover:bg-thrift-bg transition-colors"
                           >
                             <Package className="w-4 h-4 text-thrift-text-secondary" />
-                            Dashboard
+                            {user?.role === 'both' ? 'Buyer Dashboard' : 'Dashboard'}
                           </Link>
+                          {user?.role === 'both' && (
+                            <Link
+                              to="/dashboard/seller"
+                              onClick={() => setIsUserMenuOpen(false)}
+                              className="flex items-center gap-3 px-4 py-2.5 text-sm text-thrift-text hover:bg-thrift-bg transition-colors"
+                            >
+                              <TrendingUp className="w-4 h-4 text-thrift-text-secondary" />
+                              Seller Dashboard
+                            </Link>
+                          )}
                           <Link
                             to="/settings"
                             onClick={() => setIsUserMenuOpen(false)}
@@ -276,8 +304,13 @@ export function DashboardNavbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const unreadCount = useUnreadCount(!!user);
+  const confirm = useConfirm();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    setIsUserMenuOpen(false);
+    const { confirmed } = await confirm({ title: 'Log out?', message: 'You will need to sign in again to access your account.', confirmLabel: 'Log out' });
+    if (!confirmed) return;
     logout();
     navigate('/');
   };
@@ -286,15 +319,12 @@ export function DashboardNavbar() {
     <nav className="sticky top-0 z-40 bg-thrift-surface border-b border-thrift-border">
       <div className="max-w-full px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-14">
-          <div className="flex-1 max-w-xl">
-            <Link to="/browse" className="relative block">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-thrift-text-secondary" />
-              <input
-                type="text"
-                placeholder="Search listings, orders, messages..."
-                className="w-full px-4 py-2 pl-10 bg-thrift-bg border border-thrift-border rounded-input text-sm cursor-pointer"
-                readOnly
-              />
+          <div className="flex-1">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-thrift-primary flex items-center justify-center">
+                <Leaf className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-playfair text-lg font-semibold text-thrift-text">ThriftNest</span>
             </Link>
           </div>
 
@@ -304,7 +334,9 @@ export function DashboardNavbar() {
               className="relative p-2 text-thrift-text-secondary hover:text-thrift-primary transition-colors"
             >
               <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-thrift-error rounded-full" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-2 h-2 bg-thrift-error rounded-full" />
+              )}
             </Link>
 
             <div className="relative">
@@ -312,13 +344,7 @@ export function DashboardNavbar() {
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
                 className="flex items-center gap-2"
               >
-                <div className="w-8 h-8 rounded-full overflow-hidden border border-thrift-border">
-                  <img
-                    src={user?.avatar || avatarFallback(user?.name)}
-                    alt={user?.name || 'User'}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
+                <UserAvatar src={user?.avatar} name={user?.name} className="w-8 h-8 rounded-full border border-thrift-border" />
                 <div className="hidden sm:block text-left">
                   <p className="text-sm font-medium text-thrift-text">{user?.name?.split(' ')[0] || 'User'}</p>
                   <p className="text-xs text-thrift-text-secondary capitalize">{user?.role || 'Member'}</p>
@@ -328,8 +354,21 @@ export function DashboardNavbar() {
               {isUserMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsUserMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-48 bg-thrift-surface border border-thrift-border rounded-card shadow-lift z-20 overflow-hidden">
+                  <div className="absolute right-0 mt-2 w-52 bg-thrift-surface border border-thrift-border rounded-card shadow-lift z-20 overflow-hidden">
                     <div className="py-1">
+                      {user?.role === 'both' && (
+                        <>
+                          <Link to="/dashboard/buyer" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-thrift-text hover:bg-thrift-bg">
+                            <Package className="w-4 h-4 text-thrift-text-secondary" />
+                            Buyer Dashboard
+                          </Link>
+                          <Link to="/dashboard/seller" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-thrift-text hover:bg-thrift-bg">
+                            <TrendingUp className="w-4 h-4 text-thrift-text-secondary" />
+                            Seller Dashboard
+                          </Link>
+                          <div className="border-t border-thrift-border my-1" />
+                        </>
+                      )}
                       <Link to="/settings" onClick={() => setIsUserMenuOpen(false)} className="flex items-center gap-3 px-4 py-2.5 text-sm text-thrift-text hover:bg-thrift-bg">
                         <Settings className="w-4 h-4 text-thrift-text-secondary" />
                         Settings

@@ -6,6 +6,7 @@ import { Footer } from '../components/layout/Footer';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/modals/Modal';
+import { UserAvatar } from '../components/ui/UserAvatar';
 import { ordersApi, reviewsApi } from '../lib/api';
 import { toOrder } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
@@ -79,6 +80,42 @@ export function OrderDetailPage() {
     } catch { /* ignore */ } finally {
       setSubmittingReview(false);
     }
+  };
+
+  const handleDownloadReceipt = () => {
+    if (!order) return;
+    const a = order.deliveryAddress;
+    const lines = [
+      'ThriftNest — Order Receipt',
+      '================================',
+      `Order ID:    ${order.id}`,
+      `Date:        ${order.createdAt}`,
+      `Status:      ${order.status}`,
+      '',
+      `Item:        ${order.listing.title}`,
+      `Seller:      ${order.seller.name}`,
+      '',
+      `Item price:  NPR ${order.listing.price.toLocaleString()}`,
+      `Platform fee: NPR ${order.platformFee.toLocaleString()}`,
+      `Delivery fee: NPR ${order.deliveryFee.toLocaleString()}`,
+      `--------------------------------`,
+      `Total:       NPR ${order.totalAmount.toLocaleString()}`,
+      '',
+      'Delivery to:',
+      `  ${a.fullName}`,
+      `  ${a.phone}`,
+      `  ${a.street}, ${a.city}`,
+      `  ${a.district} ${a.postalCode}`,
+      '',
+      'Thank you for shopping on ThriftNest.',
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `thriftnest-receipt-${order.id}.txt`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   if (loading) {
@@ -224,7 +261,7 @@ export function OrderDetailPage() {
         <div className="bg-thrift-surface border border-thrift-border rounded-card p-5 mb-4">
           <h2 className="font-semibold text-thrift-text mb-3">Seller</h2>
           <div className="flex items-center gap-3">
-            <img src={order.seller.avatar} alt={order.seller.name} className="w-10 h-10 rounded-full" />
+            <UserAvatar src={order.seller.avatar} name={order.seller.name} className="w-10 h-10 rounded-full" />
             <div>
               <p className="font-medium text-thrift-text">{order.seller.name}</p>
               <div className="flex items-center gap-1 text-sm text-thrift-text-secondary">
@@ -252,7 +289,7 @@ export function OrderDetailPage() {
               {delivering ? 'Confirming…' : 'Mark as Delivered'}
             </Button>
           )}
-          <Button variant="outline" icon={<Download className="w-4 h-4" />}>
+          <Button variant="outline" icon={<Download className="w-4 h-4" />} onClick={handleDownloadReceipt}>
             Download Receipt
           </Button>
           {order.status === 'delivered' && !reviewSubmitted && isBuyer && (

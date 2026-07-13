@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ChevronDown, ChevronRight } from 'lucide-react';
+import { UserAvatar } from '../ui/UserAvatar';
 
 interface SidebarSection {
   title?: string;
@@ -46,15 +47,7 @@ export function Sidebar({ sections, user, onLogout }: SidebarProps) {
       {user && (
         <div className="p-4 border-b border-thrift-border">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-thrift-primary/10 flex items-center justify-center overflow-hidden">
-              {user.avatar ? (
-                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-thrift-primary font-semibold">
-                  {user.name.charAt(0).toUpperCase()}
-                </span>
-              )}
-            </div>
+            <UserAvatar src={user.avatar} name={user.name} className="w-10 h-10 rounded-full" />
             <div>
               <p className="font-medium text-thrift-text text-sm">{user.name}</p>
               <span className="text-xs bg-thrift-secondary/10 text-thrift-secondary px-2 py-0.5 rounded-full">

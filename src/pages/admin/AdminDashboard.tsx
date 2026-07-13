@@ -1,13 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { LayoutDashboard, Users, Package, ShoppingCart, CreditCard, FileText, Flag, Settings, TrendingUp, AlertTriangle, Search, Ban, Trash2, Eye, Pause, DollarSign, Save } from 'lucide-react';
+import { LayoutDashboard, Users, Package, ShoppingCart, CreditCard, FileText, Flag, TrendingUp, AlertTriangle, Search, Ban, Trash2, Eye, RotateCcw, DollarSign } from 'lucide-react';
 import { Badge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { adminApi } from '../../lib/api';
 import { toUser, toListing, toOrder } from '../../lib/mappers';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import type { User, Listing, Order } from '../../types';
 
-type AdminTab = 'overview' | 'users' | 'listings' | 'orders' | 'transactions' | 'logs' | 'reports' | 'settings';
+type AdminTab = 'overview' | 'users' | 'listings' | 'orders' | 'transactions' | 'logs' | 'reports';
 
 const sidebarSections = [
   {
@@ -18,28 +20,94 @@ const sidebarSections = [
       { icon: <ShoppingCart className="w-5 h-5" />, label: 'Orders', path: '/admin/orders' },
       { icon: <CreditCard className="w-5 h-5" />, label: 'Transactions', path: '/admin/transactions' },
       { icon: <FileText className="w-5 h-5" />, label: 'Activity Logs', path: '/admin/logs' },
-      { icon: <Flag className="w-5 h-5" />, label: 'Reports & Flags', path: '/admin/reports', badge: 7 },
-      { icon: <Settings className="w-5 h-5" />, label: 'Settings', path: '/admin/settings' },
+      { icon: <Flag className="w-5 h-5" />, label: 'Reports & Flags', path: '/admin/reports' },
     ],
   },
 ];
 
+interface AdminLog { id: string; timestamp: string; action: string; ipAddress: string; status: string; userId?: string; userAgent?: string }
+interface AdminTx { id: string; type: string; amount: number; method: string; status: string; timestamp?: string }
+
 export function AdminDashboard() {
+  const confirm = useConfirm();
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
   const [adminUsers, setAdminUsers] = useState<User[]>([]);
   const [adminListings, setAdminListings] = useState<Listing[]>([]);
   const [adminOrders, setAdminOrders] = useState<Order[]>([]);
-  const [adminLogs, setAdminLogs] = useState<Record<string, unknown>[]>([]);
-  const [adminTx, setAdminTx] = useState<Record<string, unknown>[]>([]);
+  const [adminLogs, setAdminLogs] = useState<AdminLog[]>([]);
+  const [adminTx, setAdminTx] = useState<AdminTx[]>([]);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const loadUsers = useCallback(() => adminApi.users().then((r) => setAdminUsers(r.data.users.map(toUser))).catch(() => {}), []);
+  const loadListings = useCallback(() => adminApi.listings().then((r) => setAdminListings(r.data.listings.map(toListing))).catch(() => {}), []);
+  const loadOrders = useCallback(() => adminApi.orders().then((r) => setAdminOrders(r.data.orders.map(toOrder))).catch(() => {}), []);
 
   useEffect(() => {
-    adminApi.users().then((r) => setAdminUsers(r.data.users.map(toUser))).catch(() => {});
-    adminApi.listings().then((r) => setAdminListings(r.data.listings.map(toListing))).catch(() => {});
-    adminApi.orders().then((r) => setAdminOrders(r.data.orders.map(toOrder))).catch(() => {});
-    adminApi.logs().then((r) => setAdminLogs(r.data.logs)).catch(() => {});
-    adminApi.transactions().then((r) => setAdminTx(r.data.transactions)).catch(() => {});
-  }, []);
+    loadUsers();
+    loadListings();
+    loadOrders();
+    adminApi.logs().then((r) => setAdminLogs(r.data.logs as unknown as AdminLog[])).catch(() => {});
+    adminApi.transactions().then((r) => setAdminTx(r.data.transactions as unknown as AdminTx[])).catch(() => {});
+  }, [loadUsers, loadListings, loadOrders]);
+
+  // ── Moderation actions ────────────────────────────────────────────────
+  const handleToggleBan = async (user: User) => {
+    const suspending = !user.suspended;
+    const { confirmed } = await confirm({
+      title: suspending ? `Suspend ${user.name}?` : `Reinstate ${user.name}?`,
+      message: suspending
+        ? 'The user will be logged out immediately and blocked from signing in until reinstated.'
+        : 'The user will be able to sign in again.',
+      confirmLabel: suspending ? 'Suspend' : 'Reinstate',
+      danger: suspending,
+    });
+    if (!confirmed) return;
+    setBusyId(user.id);
+    try {
+      await (suspending ? adminApi.banUser(user.id) : adminApi.unbanUser(user.id));
+      await loadUsers();
+    } catch { /* ignore */ } finally { setBusyId(null); }
+  };
+
+  const handleDeleteUser = async (user: User) => {
+    const { confirmed } = await confirm({
+      title: `Delete ${user.name}?`,
+      message: 'This permanently deletes the user account. This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setBusyId(user.id);
+    try { await adminApi.deleteUser(user.id); await loadUsers(); }
+    catch { /* ignore */ } finally { setBusyId(null); }
+  };
+
+  const handleRemoveListing = async (listing: Listing) => {
+    const { confirmed } = await confirm({
+      title: `Remove "${listing.title}"?`,
+      message: 'This takes the listing down from the marketplace.',
+      confirmLabel: 'Remove listing',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setBusyId(listing.id);
+    try { await adminApi.removeListing(listing.id); await loadListings(); }
+    catch { /* ignore */ } finally { setBusyId(null); }
+  };
+
+  const handleResolveOrder = async (order: Order) => {
+    const { confirmed } = await confirm({
+      title: 'Resolve this dispute?',
+      message: 'The order will be refunded and the item returned to the marketplace.',
+      confirmLabel: 'Refund & resolve',
+      danger: true,
+    });
+    if (!confirmed) return;
+    setBusyId(order.id);
+    try { await adminApi.resolveOrder(order.id); await loadOrders(); }
+    catch { /* ignore */ } finally { setBusyId(null); }
+  };
 
   const totalRevenue = adminOrders
     .filter((o) => o.status === 'delivered')
@@ -149,7 +217,7 @@ export function AdminDashboard() {
               <tr key={user.id} className="hover:bg-thrift-bg/50">
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-3">
-                    <img src={user.avatar} alt={user.name} className="w-10 h-10 rounded-full" />
+                    <UserAvatar src={user.avatar} name={user.name} className="w-10 h-10 rounded-full" />
                     <div>
                       <p className="font-medium text-thrift-text">{user.name}</p>
                       <p className="text-xs text-thrift-text-secondary">ID: {user.id}</p>
@@ -161,14 +229,30 @@ export function AdminDashboard() {
                   <Badge variant={user.role === 'both' ? 'info' : user.role === 'seller' ? 'warning' : 'neutral'}>{user.role.charAt(0).toUpperCase() + user.role.slice(1)}</Badge>
                 </td>
                 <td className="px-4 py-4">
-                  <Badge variant={user.verified ? 'success' : 'warning'}>{user.verified ? 'Active' : 'Pending'}</Badge>
+                  <Badge variant={user.suspended ? 'error' : user.verified ? 'success' : 'warning'}>
+                    {user.suspended ? 'Suspended' : user.verified ? 'Active' : 'Pending'}
+                  </Badge>
                 </td>
                 <td className="px-4 py-4 text-sm text-thrift-text-secondary">{user.memberSince}</td>
                 <td className="px-4 py-4">
                   <div className="flex items-center gap-2">
-                    <button className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary"><Eye className="w-4 h-4" /></button>
-                    <button className="p-1.5 text-thrift-text-secondary hover:text-thrift-warning"><Ban className="w-4 h-4" /></button>
-                    <button className="p-1.5 text-thrift-text-secondary hover:text-thrift-error"><Trash2 className="w-4 h-4" /></button>
+                    <Link to={`/users/${user.id}`} className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary" title="View profile"><Eye className="w-4 h-4" /></Link>
+                    <button
+                      onClick={() => handleToggleBan(user)}
+                      disabled={busyId === user.id}
+                      title={user.suspended ? 'Reinstate' : 'Suspend'}
+                      className={`p-1.5 disabled:opacity-40 ${user.suspended ? 'text-thrift-success hover:text-thrift-success' : 'text-thrift-text-secondary hover:text-thrift-warning'}`}
+                    >
+                      {user.suspended ? <RotateCcw className="w-4 h-4" /> : <Ban className="w-4 h-4" />}
+                    </button>
+                    <button
+                      onClick={() => handleDeleteUser(user)}
+                      disabled={busyId === user.id}
+                      title="Delete user"
+                      className="p-1.5 text-thrift-text-secondary hover:text-thrift-error disabled:opacity-40"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </td>
               </tr>
@@ -299,9 +383,17 @@ export function AdminDashboard() {
                   <td className="px-4 py-3 text-sm text-thrift-text-secondary">{listing.views}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <Link to={`/listings/${listing.id}`} className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary"><Eye className="w-4 h-4" /></Link>
-                      <button className="p-1.5 text-thrift-text-secondary hover:text-thrift-warning"><Pause className="w-4 h-4" /></button>
-                      <button className="p-1.5 text-thrift-text-secondary hover:text-thrift-error"><Trash2 className="w-4 h-4" /></button>
+                      <Link to={`/listings/${listing.id}`} className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary" title="View listing"><Eye className="w-4 h-4" /></Link>
+                      {listing.status !== 'removed' && (
+                        <button
+                          onClick={() => handleRemoveListing(listing)}
+                          disabled={busyId === listing.id}
+                          title="Remove listing"
+                          className="p-1.5 text-thrift-text-secondary hover:text-thrift-error disabled:opacity-40"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -364,9 +456,15 @@ export function AdminDashboard() {
                   <td className="px-4 py-3"><Badge variant={cfg.variant} size="sm">{cfg.label}</Badge></td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-1">
-                      <Link to={`/orders/${order.id}`} className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary"><Eye className="w-4 h-4" /></Link>
+                      <Link to={`/orders/${order.id}`} className="p-1.5 text-thrift-text-secondary hover:text-thrift-primary" title="View order"><Eye className="w-4 h-4" /></Link>
                       {order.status === 'disputed' && (
-                        <button className="px-2 py-1 text-xs bg-thrift-error text-white rounded hover:bg-thrift-error/90">Resolve</button>
+                        <button
+                          onClick={() => handleResolveOrder(order)}
+                          disabled={busyId === order.id}
+                          className="px-2 py-1 text-xs bg-thrift-error text-white rounded hover:bg-thrift-error/90 disabled:opacity-50"
+                        >
+                          Resolve
+                        </button>
                       )}
                     </div>
                   </td>
@@ -470,122 +568,39 @@ export function AdminDashboard() {
     </div>
   );
 
-  const renderSettings = () => (
-    <div className="space-y-6 max-w-2xl">
-      <h1 className="font-playfair text-2xl font-semibold text-thrift-text">Platform Settings</h1>
-
-      {/* Platform Fees */}
-      <div className="bg-white border border-thrift-border rounded-card p-6">
-        <h2 className="font-semibold text-thrift-text mb-4">Transaction Settings</h2>
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-thrift-text">Platform Fee (%)</p>
-              <p className="text-sm text-thrift-text-secondary">Applied to every completed sale</p>
-            </div>
-            <input type="number" defaultValue={5} min={0} max={20} className="w-20 px-3 py-2 border border-thrift-border rounded-input text-sm text-right" />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-thrift-text">Minimum Listing Price (NPR)</p>
-              <p className="text-sm text-thrift-text-secondary">Items below this price cannot be listed</p>
-            </div>
-            <input type="number" defaultValue={50} min={0} className="w-24 px-3 py-2 border border-thrift-border rounded-input text-sm text-right" />
-          </div>
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium text-thrift-text">Buyer Protection Window (days)</p>
-              <p className="text-sm text-thrift-text-secondary">Days after delivery to open a dispute</p>
-            </div>
-            <input type="number" defaultValue={3} min={1} max={30} className="w-16 px-3 py-2 border border-thrift-border rounded-input text-sm text-right" />
-          </div>
-        </div>
-      </div>
-
-      {/* Security Settings */}
-      <div className="bg-white border border-thrift-border rounded-card p-6">
-        <h2 className="font-semibold text-thrift-text mb-4">Security Settings</h2>
-        <div className="space-y-4">
-          {[
-            { label: 'Enforce MFA for all users', desc: 'Require 2FA on every account', defaultChecked: false },
-            { label: 'Rate limiting on auth endpoints', desc: 'Block after 5 failed attempts', defaultChecked: true },
-            { label: 'CAPTCHA on registration', desc: 'Show CAPTCHA challenge during sign-up', defaultChecked: true },
-            { label: 'IP blocking for suspicious logins', desc: 'Auto-block IPs with >10 failed attempts', defaultChecked: true },
-            { label: 'Session binding to user agent', desc: 'Invalidate session on device change', defaultChecked: false },
-          ].map((setting) => (
-            <div key={setting.label} className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-thrift-text">{setting.label}</p>
-                <p className="text-sm text-thrift-text-secondary">{setting.desc}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" defaultChecked={setting.defaultChecked} className="sr-only peer" />
-                <div className="w-11 h-6 bg-thrift-border rounded-full peer peer-checked:bg-thrift-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
-              </label>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Content Moderation */}
-      <div className="bg-white border border-thrift-border rounded-card p-6">
-        <h2 className="font-semibold text-thrift-text mb-4">Content Moderation</h2>
-        <div className="space-y-4">
-          {[
-            { label: 'Auto-remove flagged listings', desc: 'Remove after 3 independent reports', defaultChecked: false },
-            { label: 'Email alerts on new reports', desc: 'Notify admin on every new flag', defaultChecked: true },
-            { label: 'Require seller verification', desc: 'ID verification before listing', defaultChecked: false },
-          ].map((setting) => (
-            <div key={setting.label} className="flex items-center justify-between">
-              <div>
-                <p className="font-medium text-thrift-text">{setting.label}</p>
-                <p className="text-sm text-thrift-text-secondary">{setting.desc}</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input type="checkbox" defaultChecked={setting.defaultChecked} className="sr-only peer" />
-                <div className="w-11 h-6 bg-thrift-border rounded-full peer peer-checked:bg-thrift-primary peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all" />
-              </label>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex justify-end">
-        <Button icon={<Save className="w-4 h-4" />}>Save Settings</Button>
-      </div>
-    </div>
-  );
-
+  const flaggedListings = adminListings.filter((l) => l.status === 'flagged' || (l as Listing & { flagCount?: number }).flagCount);
   const renderReports = () => (
     <div className="space-y-6">
-      <h1 className="font-playfair text-2xl font-semibold text-thrift-text">Reports & Flags</h1>
+      <h1 className="font-playfair text-2xl font-semibold text-thrift-text">Reports &amp; Flags</h1>
 
-      <div className="space-y-4">
-        {[
-          { type: 'listing', title: 'Harley Davidson Jacket', reporter: 'Sita M.', reason: 'Counterfeit item', date: '2024-01-15', action: 'pending' },
-          { type: 'user', title: 'user_847', reporter: 'Maya T.', reason: 'Scam attempt', date: '2024-01-14', action: 'pending' },
-          { type: 'listing', title: 'Rolex Watch', reporter: 'Hari T.', reason: 'Stolen item reported', date: '2024-01-13', action: 'removed' },
-        ].map((report, idx) => (
-          <div key={idx} className="bg-white border border-thrift-border rounded-card p-4 flex items-start gap-4">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${report.type === 'listing' ? 'bg-thrift-warning/10 text-thrift-warning' : 'bg-thrift-error/10 text-thrift-error'}`}>
-              {report.type === 'listing' ? <Package className="w-5 h-5" /> : <Users className="w-5 h-5" />}
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <p className="font-medium text-thrift-text">{report.title}</p>
-                <Badge variant={report.action === 'pending' ? 'warning' : 'neutral'}>{report.action}</Badge>
+      {flaggedListings.length === 0 ? (
+        <div className="bg-white border border-thrift-border rounded-card p-10 text-center">
+          <Flag className="w-10 h-10 text-thrift-border mx-auto mb-3" />
+          <p className="text-thrift-text font-medium">No flagged content</p>
+          <p className="text-sm text-thrift-text-secondary mt-1">Listings marked as flagged for review will appear here.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {flaggedListings.map((listing) => (
+            <div key={listing.id} className="bg-white border border-thrift-border rounded-card p-4 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-thrift-warning/10 text-thrift-warning">
+                <Package className="w-5 h-5" />
               </div>
-              <p className="text-sm text-thrift-text-secondary">Reported for: {report.reason}</p>
-              <p className="text-xs text-thrift-text-secondary mt-1">Reported by {report.reporter} on {report.date}</p>
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="font-medium text-thrift-text">{listing.title}</p>
+                  <Badge variant="warning">Flagged</Badge>
+                </div>
+                <p className="text-sm text-thrift-text-secondary">Seller: {listing.seller.name} · NPR {listing.price.toLocaleString()}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Link to={`/listings/${listing.id}`}><Button variant="outline" size="sm">View</Button></Link>
+                <Button variant="danger" size="sm" loading={busyId === listing.id} onClick={() => handleRemoveListing(listing)}>Remove</Button>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm">Dismiss</Button>
-              <Button variant="outline" size="sm">Warn User</Button>
-              <Button variant="danger" size="sm">Suspend</Button>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
@@ -614,9 +629,6 @@ export function AdminDashboard() {
             >
               {item.icon}
               {item.label}
-              {item.badge && (
-                <span className="ml-auto bg-thrift-error text-white text-xs px-1.5 py-0.5 rounded-full">{item.badge}</span>
-              )}
             </button>
           ))}
         </nav>
@@ -632,7 +644,6 @@ export function AdminDashboard() {
           {activeTab === 'transactions' && renderTransactions()}
           {activeTab === 'logs' && renderLogs()}
           {activeTab === 'reports' && renderReports()}
-          {activeTab === 'settings' && renderSettings()}
         </main>
       </div>
     </div>

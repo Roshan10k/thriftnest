@@ -4,10 +4,12 @@ import { Sidebar } from '../../components/layout/Sidebar';
 import { DashboardNavbar } from '../../components/layout/Navbar';
 import { ListingCard } from '../../components/cards/ListingCard';
 import { Badge } from '../../components/ui/Badge';
+import { UserAvatar } from '../../components/ui/UserAvatar';
 import { ordersApi, wishlistApi, listingsApi } from '../../lib/api';
 import { toOrder, toWishlistItem, toListing } from '../../lib/mappers';
 import { useApi } from '../../hooks/useApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { useConfirm } from '../../contexts/ConfirmContext';
 import type { OrderStatus } from '../../types';
 
 
@@ -33,7 +35,13 @@ export function BuyerDashboard() {
   const { user: authUser, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => { logout(); navigate('/'); };
+  const confirm = useConfirm();
+  const handleLogout = async () => {
+    const { confirmed } = await confirm({ title: 'Log out?', message: 'You will need to sign in again to access your account.', confirmLabel: 'Log out' });
+    if (!confirmed) return;
+    logout();
+    navigate('/');
+  };
 
   const sidebarSections = [
     {
@@ -193,11 +201,7 @@ export function BuyerDashboard() {
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
-                          <img
-                            src={order.seller.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(order.seller.name || 'S')}&background=5C8A5C&color=fff&size=40`}
-                            alt={order.seller.name}
-                            className="w-6 h-6 rounded-full object-cover"
-                          />
+                          <UserAvatar src={order.seller.avatar} name={order.seller.name} className="w-6 h-6 rounded-full" />
                           <span className="text-sm text-thrift-text">{order.seller.name}</span>
                         </div>
                       </td>

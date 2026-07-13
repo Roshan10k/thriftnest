@@ -2,6 +2,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Heart, MapPin, Clock, MessageCircle } from 'lucide-react';
 import type { Listing } from '../../types';
 import { Badge } from '../ui/Badge';
+import { UserAvatar } from '../ui/UserAvatar';
 import { conditionLabels } from '../../data/mockData';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWishlist } from '../../contexts/WishlistContext';
@@ -117,11 +118,7 @@ export function ListingCard({ listing, variant = 'default' }: ListingCardProps) 
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <img
-            src={listing.seller.avatar}
-            alt={listing.seller.name}
-            className="w-5 h-5 rounded-full object-cover"
-          />
+          <UserAvatar src={listing.seller.avatar} name={listing.seller.name} className="w-5 h-5 rounded-full" />
           <span className="text-xs text-thrift-text-secondary">{listing.seller.name}</span>
         </div>
 
