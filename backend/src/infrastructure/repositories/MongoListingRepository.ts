@@ -38,7 +38,11 @@ export class MongoListingRepository implements IListingRepository {
     if (filters.status) query.status = filters.status;
     if (filters.category) query.category = filters.category;
     if (filters.condition) query.condition = filters.condition;
-    if (filters.sellerId) query.sellerId = filters.sellerId;
+    if (filters.sellerId) {
+      query.sellerId = filters.sellerId;
+    } else if (filters.excludeSellerId) {
+      query.sellerId = { $ne: filters.excludeSellerId };
+    }
     if (filters.location) query.location = new RegExp(filters.location, 'i');
     if (filters.minPrice !== undefined || filters.maxPrice !== undefined) {
       query.price = {};

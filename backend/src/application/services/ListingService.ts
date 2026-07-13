@@ -14,7 +14,7 @@ export class ListingService {
     private readonly wishlistRepo: IWishlistRepository,
   ) {}
 
-  async browse(query: ListingQueryDtoType) {
+  async browse(query: ListingQueryDtoType, viewerId?: string) {
     const filters: ListingFilters = {
       category: query.category as ListingFilters['category'],
       condition: query.condition as ListingFilters['condition'],
@@ -23,6 +23,10 @@ export class ListingService {
       location: query.location,
       search: query.search,
       sort: query.sort as ListingFilters['sort'],
+      sellerId: query.sellerId,
+      // Hide the viewer's own listings from the general feed, but only when they
+      // aren't explicitly browsing a specific seller (e.g. a profile page).
+      excludeSellerId: query.sellerId ? undefined : viewerId,
       status: 'active',
     };
     return this.listingRepo.findAll(filters, { page: query.page, limit: query.limit });

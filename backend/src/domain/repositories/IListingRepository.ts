@@ -10,6 +10,7 @@ export interface ListingFilters {
   maxPrice?: number;
   location?: string;
   sellerId?: string;
+  excludeSellerId?: string;
   status?: ListingStatus;
   search?: string;
   sort?: ListingSort;
