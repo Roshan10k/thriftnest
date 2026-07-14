@@ -25,3 +25,6 @@ dist-ssr
 # Runtime uploads (keep folder, ignore contents)
 backend/uploads/*
 !backend/uploads/.gitkeep
+
+# Report drafts and internal pentest notes — kept local, not part of the repo
+docs/
