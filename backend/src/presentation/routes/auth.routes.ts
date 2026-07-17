@@ -10,6 +10,7 @@ import { BcryptHashService } from '../../infrastructure/services/BcryptHashServi
 import { JwtTokenService } from '../../infrastructure/services/JwtTokenService';
 import { NodemailerEmailService } from '../../infrastructure/services/NodemailerEmailService';
 import { OtplibMfaService } from '../../infrastructure/services/OtplibMfaService';
+import { AesCryptoService } from '../../infrastructure/services/AesCryptoService';
 import { LocalStorageService } from '../../infrastructure/services/LocalStorageService';
 
 const router = Router();
@@ -23,6 +24,7 @@ const service = new AuthService(
   new JwtTokenService(),
   new NodemailerEmailService(),
   new OtplibMfaService(),
+  new AesCryptoService(),
 );
 
 const userService = new UserService(

@@ -4,6 +4,7 @@ import type { IHashService } from '../interfaces/IHashService';
 import type { ITokenService } from '../interfaces/ITokenService';
 import type { IEmailService } from '../interfaces/IEmailService';
 import type { IMfaService } from '../interfaces/IMfaService';
+import type { ICryptoService } from '../interfaces/ICryptoService';
 import { isLocked, incrementLoginAttempts } from '../../domain/entities/User';
 import type { RegisterDtoType, LoginDtoType, VerifyMfaSetupDtoType } from '../dtos/auth.dto';
 import { AppError } from '../errors/AppError';
@@ -16,7 +17,22 @@ export class AuthService {
     private readonly tokenService: ITokenService,
     private readonly emailService: IEmailService,
     private readonly mfaService: IMfaService,
+    private readonly cryptoService: ICryptoService,
   ) {}
+
+  // The MFA secret is stored AES-encrypted at rest. Older test accounts may
+  // still hold a plaintext secret (no "iv:tag:ciphertext" structure), so fall
+  // back to treating an unrecognised value as plaintext rather than failing.
+  private readMfaSecret(stored: string): string {
+    if (stored.split(':').length === 3) {
+      try {
+        return this.cryptoService.decrypt(stored);
+      } catch {
+        return stored;
+      }
+    }
+    return stored;
+  }
 
   async register(dto: RegisterDtoType, ipAddress: string, userAgent: string) {
     const existing = await this.userRepo.findByEmail(dto.email);
@@ -102,7 +118,7 @@ export class AuthService {
         return { mfaRequired: true, userId: user.id };
       }
       if (dto.mfaToken) {
-        const valid = this.mfaService.verifyToken(user.mfaSecret!, dto.mfaToken);
+        const valid = this.mfaService.verifyToken(this.readMfaSecret(user.mfaSecret!), dto.mfaToken);
         if (!valid) {
           await this.activityLogRepo.create({
             userId: user.id,
@@ -183,7 +199,9 @@ export class AuthService {
     const rawCodes = this.mfaService.generateBackupCodes();
     const hashedCodes = await Promise.all(rawCodes.map((c) => this.mfaService.hashBackupCode(c)));
 
-    await this.userRepo.updateMfa(userId, dto.secret, hashedCodes);
+    // Encrypt the TOTP secret before it touches the database.
+    const encryptedSecret = this.cryptoService.encrypt(dto.secret);
+    await this.userRepo.updateMfa(userId, encryptedSecret, hashedCodes);
     return { backupCodes: rawCodes };
   }
 
