@@ -6,6 +6,8 @@ import morgan from 'morgan';
 import path from 'path';
 
 import { globalRateLimit } from './presentation/middleware/rateLimit';
+import { csrfProtection } from './presentation/middleware/csrf';
+import { mongoSanitize } from './presentation/middleware/mongoSanitize';
 import { errorHandler } from './presentation/middleware/errorHandler';
 
 import authRoutes from './presentation/routes/auth.routes';
@@ -28,8 +30,34 @@ app.set('etag', false);
 // cross-origin image loading when frontend (5173) loads images from backend (8000)
 app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
-// Security headers
-app.use(helmet());
+// Security headers. The Content-Security-Policy is written out explicitly
+// (rather than relying on Helmet's defaults) so it is auditable and defensible:
+// scripts/objects/frames are locked down, and the policy is documented directly
+// here. upgrade-insecure-requests is only emitted in production, where the app
+// is served over HTTPS — enabling it in local HTTP dev would break requests.
+const cspIsProduction = process.env.NODE_ENV === 'production';
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      useDefaults: false,
+      directives: {
+        defaultSrc: ["'self'"],
+        baseUri: ["'self'"],
+        fontSrc: ["'self'", 'https:', 'data:'],
+        formAction: ["'self'"],
+        frameAncestors: ["'none'"], // clickjacking: no one may frame this app
+        frameSrc: ["'none'"],
+        imgSrc: ["'self'", 'data:', 'blob:'],
+        objectSrc: ["'none'"], // no Flash/Java/other plugins
+        scriptSrc: ["'self'"], // no inline scripts → blunts reflected/stored XSS
+        scriptSrcAttr: ["'none'"], // no inline event handlers (onclick=...)
+        styleSrc: ["'self'", "'unsafe-inline'"], // utility-class styles need inline
+        connectSrc: ["'self'"],
+        ...(cspIsProduction ? { upgradeInsecureRequests: [] } : {}),
+      },
+    },
+  }),
+);
 
 // In development, Vite auto-increments its port (5173, 5174, ...) whenever the
 // preferred port is already taken by another project, so a single hardcoded
@@ -46,21 +74,34 @@ app.use(
   }),
 );
 
-// Request parsing
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-
 // Logging
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
 
+// Request parsing
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
+
+// Strip MongoDB query operators ($-prefixed / dotted keys) from all user input
+// to prevent NoSQL injection (defence in depth behind Zod validation).
+app.use(mongoSanitize);
+
 // Rate limiting
 app.use(globalRateLimit);
 
+// CSRF protection (double-submit cookie). Issues a csrfToken cookie on every
+// request and requires a matching x-csrf-token header on state-changing methods.
+app.use(csrfProtection);
+
 // Trust proxy (for correct IP behind reverse proxy)
 app.set('trust proxy', 1);
+
+// Hands the current CSRF token to the SPA so it can echo it back in the header.
+app.get('/api/csrf-token', (_req, res) => {
+  res.json({ csrfToken: res.locals.csrfToken });
+});
 
 // Routes
 app.use('/api/auth', authRoutes);

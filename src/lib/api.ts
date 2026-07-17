@@ -1,14 +1,40 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+
+// CSRF token for the double-submit-cookie scheme. The server sets a matching
+// `csrfToken` cookie; we fetch the value once, cache it, and echo it in the
+// `x-csrf-token` header on every state-changing request. A cross-site attacker
+// cannot read this value, so it cannot forge the header.
+let csrfToken: string | null = null;
+let csrfInflight: Promise<string> | null = null;
+async function getCsrfToken(): Promise<string> {
+  if (csrfToken) return csrfToken;
+  if (!csrfInflight) {
+    csrfInflight = fetch(`${BASE_URL}/csrf-token`, { credentials: 'include', cache: 'no-store' })
+      .then((r) => r.json())
+      .then((d) => {
+        csrfToken = (d?.csrfToken as string) ?? '';
+        return csrfToken;
+      })
+      .finally(() => { csrfInflight = null; });
+  }
+  return csrfInflight;
+}
+
 // Auth tokens live in HttpOnly cookies set by the server, so the browser sends
 // them automatically with `credentials: 'include'` — the frontend never reads
 // or stores them (defends against XSS token theft).
 async function rawFetch(path: string, options: RequestInit): Promise<Response> {
+  const method = (options.method ?? 'GET').toUpperCase();
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
   if (options.body && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
+  }
+  if (!SAFE_METHODS.has(method)) {
+    headers['x-csrf-token'] = await getCsrfToken();
   }
   return fetch(`${BASE_URL}${path}`, {
     cache: 'no-store',
@@ -37,6 +63,16 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   if (res.status === 401 && path !== '/auth/refresh' && path !== '/auth/login') {
     const refreshed = await tryRefresh();
     if (refreshed) res = await rawFetch(path, options);
+  }
+
+  // On a stale/missing CSRF token, drop the cache, re-fetch a fresh token, and
+  // retry once so the failure self-heals rather than surfacing to the user.
+  if (res.status === 403) {
+    const probe = await res.clone().json().catch(() => ({}));
+    if (typeof probe?.message === 'string' && probe.message.toLowerCase().includes('csrf')) {
+      csrfToken = null;
+      res = await rawFetch(path, options);
+    }
   }
 
   const data = await res.json().catch(() => ({}));
