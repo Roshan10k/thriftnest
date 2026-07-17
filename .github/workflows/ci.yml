@@ -1,0 +1,119 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel superseded runs on the same branch to save CI minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Frontend — lint, typecheck, build, audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build
+        run: npm run build
+
+      # Dependency vulnerability scan. The frontend's remaining findings live
+      # in the Vite/esbuild dev toolchain (not shipped in the production
+      # bundle) and require a breaking major-version upgrade tracked
+      # separately, so this reports rather than blocks the pipeline.
+      - name: Audit dependencies (report only)
+        if: always()
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  backend:
+    name: Backend — typecheck, build, audit
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      # The backend dependency tree is currently clean, so an actual
+      # vulnerability here fails the pipeline rather than just being logged.
+      - name: Audit dependencies (blocking)
+        run: npm audit --audit-level=high
+
+  sast:
+    name: SAST — CodeQL static analysis
+    runs-on: ubuntu-latest
+    # CodeQL scans the whole repository (frontend + backend) for injection,
+    # XSS, insecure-crypto and similar code-level vulnerabilities, and uploads
+    # the results to the repo's Security tab.
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-and-quality
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"
+
+  docker:
+    name: Docker images build
+    runs-on: ubuntu-latest
+    needs: [frontend, backend]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: false
+          tags: thriftnest-backend:ci
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: thriftnest-frontend:ci
