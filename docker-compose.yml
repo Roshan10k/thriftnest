@@ -1,0 +1,78 @@
+# Reproducible local environment: MongoDB + the Express API + the React SPA.
+# NOTE: the secrets below are throwaway development defaults for a local,
+# disposable container — never reuse them in a real deployment. Production
+# secrets belong in a secret manager / CI secret store, not in this file.
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    # The backend reaches MongoDB over the internal Docker network
+    # (mongodb://mongo:27017). This host mapping is bound to 127.0.0.1 ONLY, so
+    # the database is reachable from this machine (e.g. mongosh for debugging)
+    # but is never exposed on the host's external interfaces or the internet.
+    ports:
+      - "127.0.0.1:27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      PORT: 8000
+      NODE_ENV: development
+      MONGODB_URI: mongodb://mongo:27017/thriftnest
+      JWT_SECRET: dev-only-jwt-secret-please-change-32ch
+      JWT_REFRESH_SECRET: dev-only-refresh-secret-please-chg-32
+      JWT_ACCESS_EXPIRES: 15d
+      JWT_REFRESH_EXPIRES: 30d
+      BCRYPT_ROUNDS: 12
+      ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      TOTP_SERVICE_NAME: ThriftNest
+      RATE_LIMIT_WINDOW_MS: 900000
+      RATE_LIMIT_MAX: 1000
+      AUTH_RATE_LIMIT_MAX: 20
+      AUTH_LOCKOUT_DURATION_MS: 900000
+      CLIENT_URL: http://localhost:5173
+      PLATFORM_FEE_PERCENT: 5
+      # Supply the real values via a .env file next to docker-compose.yml or your
+      # shell env; these ${VAR} refs keep the secret out of the committed compose.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_OAUTH_REDIRECT_URI: http://localhost:8000/api/auth/oauth/google/callback
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - backend-uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8000/api/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: .
+      args:
+        VITE_API_URL: http://localhost:8000/api
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "5173:80"
+
+volumes:
+  mongo-data:
+  backend-uploads:
