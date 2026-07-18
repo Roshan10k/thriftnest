@@ -5,7 +5,11 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist'] },
+  // This config targets the browser-side React app only. The backend is a
+  // separate Node/TypeScript project with its own tsconfig and build output —
+  // it must never be scanned with browser globals, and its generated `dist`
+  // declaration files (present after `npm run build`) are not source code.
+  { ignores: ['dist', 'backend/**', 'docs/**'] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ['**/*.{ts,tsx}'],

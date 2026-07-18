@@ -15,7 +15,6 @@ import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
 import { ListingCard } from '../components/cards/ListingCard';
 import { Badge } from '../components/ui/Badge';
-import { categoryLabels } from '../data/mockData';
 import { listingsApi } from '../lib/api';
 import { toListing } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';

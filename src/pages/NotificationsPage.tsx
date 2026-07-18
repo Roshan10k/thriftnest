@@ -98,8 +98,23 @@ export function NotificationsPage() {
           <div className="space-y-2">
             {displayed.map((n) => {
               const cfg = typeConfig[n.type];
-              const Wrapper = cfg.link ? Link : 'div';
-              const wrapperProps = cfg.link ? { to: cfg.link } : {};
+              const body = (
+                <>
+                  <div className={`w-9 h-9 rounded-full ${cfg.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
+                    {cfg.icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className={`text-sm font-medium ${n.read ? 'text-thrift-text-secondary' : 'text-thrift-text'}`}>
+                        {n.title}
+                      </p>
+                      {!n.read && <span className="w-2 h-2 rounded-full bg-thrift-primary flex-shrink-0 mt-1.5" />}
+                    </div>
+                    <p className="text-sm text-thrift-text-secondary mt-0.5 line-clamp-2">{n.message}</p>
+                    <p className="text-xs text-thrift-text-secondary mt-1.5">{n.timestamp}</p>
+                  </div>
+                </>
+              );
 
               return (
                 <div
@@ -108,25 +123,15 @@ export function NotificationsPage() {
                     n.read ? 'border-thrift-border' : 'border-thrift-primary/30 shadow-card'
                   }`}
                 >
-                  <Wrapper
-                    {...(wrapperProps as Record<string, string>)}
-                    className="flex items-start gap-4 p-4"
-                    onClick={() => markRead(n.id)}
-                  >
-                    <div className={`w-9 h-9 rounded-full ${cfg.bg} flex items-center justify-center flex-shrink-0 mt-0.5`}>
-                      {cfg.icon}
+                  {cfg.link ? (
+                    <Link to={cfg.link} className="flex items-start gap-4 p-4" onClick={() => markRead(n.id)}>
+                      {body}
+                    </Link>
+                  ) : (
+                    <div className="flex items-start gap-4 p-4" onClick={() => markRead(n.id)}>
+                      {body}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className={`text-sm font-medium ${n.read ? 'text-thrift-text-secondary' : 'text-thrift-text'}`}>
-                          {n.title}
-                        </p>
-                        {!n.read && <span className="w-2 h-2 rounded-full bg-thrift-primary flex-shrink-0 mt-1.5" />}
-                      </div>
-                      <p className="text-sm text-thrift-text-secondary mt-0.5 line-clamp-2">{n.message}</p>
-                      <p className="text-xs text-thrift-text-secondary mt-1.5">{n.timestamp}</p>
-                    </div>
-                  </Wrapper>
+                  )}
                   <div className="flex items-center justify-end gap-2 px-4 pb-3 -mt-1">
                     {!n.read && (
                       <button

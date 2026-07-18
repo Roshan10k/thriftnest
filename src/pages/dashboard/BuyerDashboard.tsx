@@ -94,7 +94,6 @@ export function BuyerDashboard() {
       <Sidebar
         sections={sidebarSections}
         user={user}
-        onLogout={() => {}}
       />
 
       <div className="ml-60">

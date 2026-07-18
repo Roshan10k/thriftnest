@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { ChevronRight, Heart, MessageCircle, ShoppingCart, MapPin, Clock, Star, Shield, User, Check, Package, Truck, Calendar } from 'lucide-react';
+import { ChevronRight, Heart, MessageCircle, ShoppingCart, MapPin, Star, Shield, Check, Package, Truck } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
 import { ListingCard } from '../components/cards/ListingCard';

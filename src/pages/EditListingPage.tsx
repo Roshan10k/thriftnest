@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Upload, X, Image, Info, MapPin, Truck, Package, DollarSign, Eye, Trash2 } from 'lucide-react';
+import { ArrowLeft, Upload, X, Image, Info, MapPin, Truck, Package, Eye, Trash2 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Textarea } from '../components/ui/Textarea';
@@ -90,6 +90,14 @@ export function EditListingPage() {
     return (
       <div className="min-h-screen bg-thrift-bg flex items-center justify-center">
         <p className="text-thrift-text-secondary">Loading listing…</p>
+      </div>
+    );
+  }
+
+  if (!existing) {
+    return (
+      <div className="min-h-screen bg-thrift-bg flex items-center justify-center">
+        <p className="text-thrift-text-secondary">Listing not found.</p>
       </div>
     );
   }

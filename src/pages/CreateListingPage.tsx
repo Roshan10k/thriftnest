@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { Upload, X, Image, Info, MapPin, Truck, Package, DollarSign, Check, Eye } from 'lucide-react';
+import { Upload, X, Image, Info, Package, Eye } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Textarea } from '../components/ui/Textarea';
 import { Select } from '../components/ui/Select';
-import { Badge } from '../components/ui/Badge';
 import { DashboardNavbar } from '../components/layout/Navbar';
 import { Sidebar } from '../components/layout/Sidebar';
 import { ListingCard } from '../components/cards/ListingCard';

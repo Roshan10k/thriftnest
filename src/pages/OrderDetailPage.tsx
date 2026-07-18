@@ -42,6 +42,9 @@ export function OrderDetailPage() {
   const [reviewText, setReviewText] = useState('');
   const [reviewSubmitted, setReviewSubmitted] = useState(false);
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [submittingDispute, setSubmittingDispute] = useState(false);
 
   const { data: order, loading, refetch } = useApi(
     () => ordersApi.getById(id!).then((r) => toOrder(r.data)),
@@ -80,6 +83,18 @@ export function OrderDetailPage() {
     } catch { /* ignore */ } finally {
       setSubmittingReview(false);
     }
+  };
+
+  const handleSubmitDispute = async () => {
+    if (!order || !disputeReason.trim()) return;
+    setSubmittingDispute(true);
+    try {
+      await ordersApi.updateStatus(order.id, { status: 'disputed', disputeReason: disputeReason.trim() });
+      setShowDisputeModal(false);
+      setDisputeReason('');
+      await refetch();
+    } catch { /* keep the modal open so the buyer can retry */ }
+    finally { setSubmittingDispute(false); }
   };
 
   const handleDownloadReceipt = () => {
@@ -306,8 +321,12 @@ export function OrderDetailPage() {
               Review submitted — thank you!
             </div>
           )}
-          {['payment-pending', 'payment-confirmed', 'shipped'].includes(order.status) && (
-            <Button variant="outline" className="text-thrift-error border-thrift-error hover:bg-thrift-error/5">
+          {isBuyer && ['payment-pending', 'payment-confirmed', 'shipped'].includes(order.status) && (
+            <Button
+              variant="outline"
+              className="text-thrift-error border-thrift-error hover:bg-thrift-error/5"
+              onClick={() => setShowDisputeModal(true)}
+            >
               <Shield className="w-4 h-4 mr-2" />
               Open Dispute
             </Button>
@@ -349,6 +368,30 @@ export function OrderDetailPage() {
           loading={submittingReview}
         >
           {submittingReview ? 'Submitting…' : 'Submit Review'}
+        </Button>
+      </Modal>
+
+      {/* Dispute Modal */}
+      <Modal isOpen={showDisputeModal} onClose={() => setShowDisputeModal(false)} title="Open a Dispute">
+        <p className="text-sm text-thrift-text-secondary mb-4">
+          Tell us what went wrong. An admin will review this order and can refund it if the dispute is upheld.
+        </p>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-thrift-text mb-1.5">Reason</label>
+          <textarea
+            value={disputeReason}
+            onChange={(e) => setDisputeReason(e.target.value)}
+            placeholder="e.g. Item not as described, never shipped, wrong item received…"
+            className="w-full px-3 py-2 border border-thrift-border rounded-input resize-none h-24 text-sm"
+          />
+        </div>
+        <Button
+          className="w-full"
+          disabled={!disputeReason.trim()}
+          onClick={handleSubmitDispute}
+          loading={submittingDispute}
+        >
+          {submittingDispute ? 'Submitting…' : 'Submit Dispute'}
         </Button>
       </Modal>
     </div>

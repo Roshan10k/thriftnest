@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Heart, Trash2, ShoppingCart, Bell, Package } from 'lucide-react';
+import { Heart, Trash2, ShoppingCart, Bell } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
 import { Badge } from '../components/ui/Badge';
@@ -29,7 +29,7 @@ export function WishlistPage() {
   const toggleAlert = async (id: string) => {
     const next = new Set(alertedIds);
     const enabling = !next.has(id);
-    next.has(id) ? next.delete(id) : next.add(id);
+    if (next.has(id)) next.delete(id); else next.add(id);
     setAlertedIds(next);
     try { await wishlistApi.setPriceAlert(id, enabling); } catch { /* ignore */ }
   };

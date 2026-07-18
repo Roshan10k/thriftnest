@@ -15,12 +15,12 @@ const categories = [
 const faqs: { q: string; a: string; category: string }[] = [
   {
     q: 'How do I buy an item?',
-    a: 'Browse listings, click on an item you like, then click "Buy Now". You\'ll go through a checkout process where you enter your delivery address and payment details. Payment is processed securely through Stripe or via eSewa/Khalti.',
+    a: 'Browse listings, click on an item you like, then click "Buy Now". You\'ll go through a checkout process where you enter your delivery address and payment details. Payment is processed securely through Stripe.',
     category: 'Buying',
   },
   {
     q: 'Is my payment safe?',
-    a: 'Yes. All payments are processed by Stripe, a PCI-DSS compliant payment provider. Your card data never touches our servers. For Nepali users, eSewa and Khalti are also supported.',
+    a: 'Yes. All payments are processed by Stripe, a PCI-DSS compliant payment provider. Your card data never touches our servers.',
     category: 'Payments',
   },
   {

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Grid, List, ChevronDown, MapPin, Star, Package } from 'lucide-react';
+import { Search, Grid, List, ChevronDown, MapPin, Star, Package, SlidersHorizontal } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
 import { ListingCard } from '../components/cards/ListingCard';
@@ -16,6 +16,7 @@ export function BrowsePage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [showFilters, setShowFilters] = useState(true);
+  const [categoriesOpen, setCategoriesOpen] = useState(true);
   const [sortOrder, setSortOrder] = useState('newest');
   const [isLoading, setIsLoading] = useState(false);
   const [listings, setListings] = useState<Listing[]>([]);
@@ -142,11 +143,15 @@ export function BrowsePage() {
 
               {/* Categories */}
               <div className="mb-6">
-                <button className="flex items-center justify-between w-full mb-3" onClick={() => {}}>
+                <button
+                  className="flex items-center justify-between w-full mb-3"
+                  onClick={() => setCategoriesOpen(!categoriesOpen)}
+                  aria-expanded={categoriesOpen}
+                >
                   <h3 className="text-sm font-medium text-thrift-text">Categories</h3>
-                  <ChevronDown className="w-4 h-4 text-thrift-text-secondary" />
+                  <ChevronDown className={`w-4 h-4 text-thrift-text-secondary transition-transform ${categoriesOpen ? '' : '-rotate-90'}`} />
                 </button>
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className={`space-y-2 max-h-48 overflow-y-auto ${categoriesOpen ? '' : 'hidden'}`}>
                   {Object.entries(categoryLabels).map(([key, label]) => (
                     <label key={key} className="flex items-center gap-2 cursor-pointer">
                       <input
@@ -251,7 +256,7 @@ export function BrowsePage() {
                 </div>
               </div>
 
-              <Button onClick={() => {}} className="w-full">
+              <Button onClick={() => setShowFilters(false)} className="w-full lg:hidden">
                 Apply Filters
               </Button>
             </div>
@@ -261,9 +266,18 @@ export function BrowsePage() {
           <main className="flex-1">
             {/* Sort Bar */}
             <div className="flex items-center justify-between mb-4 bg-thrift-surface border border-thrift-border rounded-card p-3">
-              <p className="text-sm text-thrift-text-secondary">
-                <span className="font-medium text-thrift-text">{totalCount}</span> items found
-              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="lg:hidden flex items-center gap-1.5 px-3 py-2 text-sm border border-thrift-border rounded-input text-thrift-text-secondary hover:text-thrift-text"
+                >
+                  <SlidersHorizontal className="w-4 h-4" />
+                  Filters
+                </button>
+                <p className="text-sm text-thrift-text-secondary">
+                  <span className="font-medium text-thrift-text">{totalCount}</span> items found
+                </p>
+              </div>
               <div className="flex items-center gap-4">
                 <select
                   value={sortOrder}
