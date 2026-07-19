@@ -98,6 +98,16 @@ app.use(csrfProtection);
 // Trust proxy (for correct IP behind reverse proxy)
 app.set('trust proxy', 1);
 
+// Every /api response may carry personal or session-tied data (profiles,
+// orders, messages), so none of it should be stored by an intermediary
+// caching proxy or the browser's own cache — found via an OWASP ZAP baseline
+// scan (see docs/pentest-findings.md, Finding V4). Static assets under
+// /uploads are served separately above and are unaffected by this.
+app.use('/api', (_req, res, next) => {
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+
 // Hands the current CSRF token to the SPA so it can echo it back in the header.
 app.get('/api/csrf-token', (_req, res) => {
   res.json({ csrfToken: res.locals.csrfToken });
