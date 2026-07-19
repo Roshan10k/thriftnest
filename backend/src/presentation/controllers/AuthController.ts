@@ -1,10 +1,13 @@
 import type { Response, NextFunction } from 'express';
+import { randomBytes } from 'crypto';
 import type { AuthRequest } from '../middleware/auth';
 import { AuthService } from '../../application/services/AuthService';
 import { UserService } from '../../application/services/UserService';
+import { GoogleOAuthService } from '../../infrastructure/services/GoogleOAuthService';
 import { RegisterDto, LoginDto, VerifyMfaSetupDto } from '../../application/dtos/auth.dto';
 
 const isProduction = process.env.NODE_ENV === 'production';
+const CLIENT_URL = process.env.CLIENT_URL ?? 'http://localhost:5173';
 // Long-lived access token (15 days). This is safe here because the authenticate
 // middleware re-checks the token's version against the database on every request,
 // so logout / suspension / a credential change revokes the token immediately
@@ -22,7 +25,8 @@ const REFRESH_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 // same-site (they share a registrable domain in production, and Chrome/Firefox
 // treat different localhost ports as same-site too), so ordinary same-origin
 // API calls are unaffected — the only cost is a session cookie not being sent
-// on the very first top-level navigation after clicking an external link.
+// on the very first top-level navigation after clicking an external link,
+// which is why the OAuth `oauth_state` cookie below deliberately stays Lax.
 function baseCookie() {
   return { httpOnly: true, secure: isProduction, sameSite: 'strict' as const, path: '/' };
 }
@@ -57,7 +61,60 @@ export class AuthController {
   constructor(
     private readonly authService: AuthService,
     private readonly userService: UserService,
+    private readonly googleOAuth: GoogleOAuthService,
   ) {}
+
+  // Step 1 of the Google OAuth flow: mint an anti-forgery `state`, stash it in a
+  // short-lived HttpOnly cookie, and redirect the browser to Google's consent
+  // screen. The state is checked on the callback to prevent OAuth CSRF.
+  oauthGoogleStart = (req: AuthRequest, res: Response): void => {
+    if (!this.googleOAuth.isConfigured()) {
+      res.redirect(`${CLIENT_URL}/login?oauth=unconfigured`);
+      return;
+    }
+    const state = randomBytes(16).toString('hex');
+    res.cookie('oauth_state', state, {
+      httpOnly: true,
+      secure: isProduction,
+      // Must stay Lax, not Strict: Google's redirect back to our callback is a
+      // genuine cross-site top-level navigation (the referring page is
+      // accounts.google.com), and a Strict cookie would not be sent on it —
+      // silently breaking every OAuth login. This is a well-known, unavoidable
+      // conflict between SameSite=Strict and any redirect-based auth flow.
+      sameSite: 'lax',
+      maxAge: 10 * 60 * 1000, // 10 minutes
+      path: '/',
+    });
+    res.redirect(this.googleOAuth.getAuthorizationUrl(state));
+  };
+
+  // Step 2: Google redirects back here with a code. Verify the state, exchange
+  // the code for the profile, log the user in, set our own session cookies, and
+  // bounce to the SPA. Errors redirect to the login page (never leak details).
+  oauthGoogleCallback = async (req: AuthRequest, res: Response): Promise<void> => {
+    const { code, state } = req.query as { code?: string; state?: string };
+    const cookieState = req.cookies?.oauth_state as string | undefined;
+    res.clearCookie('oauth_state', { path: '/' });
+
+    if (!code || !state || !cookieState || state !== cookieState) {
+      res.redirect(`${CLIENT_URL}/login?oauth=failed`);
+      return;
+    }
+
+    try {
+      const profile = await this.googleOAuth.exchangeCodeForProfile(code);
+      const ip = (req.headers['x-forwarded-for'] as string) || req.ip || 'unknown';
+      const ua = req.headers['user-agent'] || 'unknown';
+      const result = await this.authService.loginWithGoogle(profile, ip, ua);
+      setAuthCookies(res, {
+        accessToken: result.accessToken as string,
+        refreshToken: result.refreshToken as string,
+      });
+      res.redirect(`${CLIENT_URL}/`);
+    } catch {
+      res.redirect(`${CLIENT_URL}/login?oauth=error`);
+    }
+  };
 
   register = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
     try {

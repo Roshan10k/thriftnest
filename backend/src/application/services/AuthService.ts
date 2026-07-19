@@ -8,6 +8,7 @@ import type { ICryptoService } from '../interfaces/ICryptoService';
 import { isLocked, incrementLoginAttempts, isPasswordExpired } from '../../domain/entities/User';
 import type { RegisterDtoType, LoginDtoType, VerifyMfaSetupDtoType } from '../dtos/auth.dto';
 import { AppError } from '../errors/AppError';
+import { randomBytes } from 'crypto';
 
 export class AuthService {
   constructor(
@@ -64,6 +65,65 @@ export class AuthService {
     await this.activityLogRepo.create({
       userId: user.id,
       action: 'account_registered',
+      ipAddress,
+      userAgent,
+      status: 'success',
+    });
+
+    const tokens = this.tokenService.generateTokens({
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      tokenVersion: user.tokenVersion,
+    });
+
+    return { user: this.sanitize(user), ...tokens };
+  }
+
+  // Logs a user in via a verified Google profile (authorization-code flow run in
+  // GoogleOAuthService). Finds the existing account by email or provisions a new
+  // one, then issues the same session tokens as a normal login. New OAuth users
+  // get an unusable random password hash (they authenticate through Google) and
+  // default to the buyer role. Google is the identity provider here, so the
+  // app's own MFA is not re-challenged on this path.
+  async loginWithGoogle(
+    profile: { email: string; name: string; avatar?: string },
+    ipAddress: string,
+    userAgent: string,
+  ) {
+    let user = await this.userRepo.findByEmail(profile.email);
+
+    if (user) {
+      if (user.suspended) {
+        throw new AppError('Your account has been suspended. Please contact support.', 403);
+      }
+    } else {
+      const randomPassword = randomBytes(32).toString('hex');
+      const passwordHash = await this.hashService.hash(randomPassword);
+      user = await this.userRepo.create({
+        email: profile.email,
+        passwordHash,
+        name: profile.name,
+        role: 'buyer',
+        avatar: profile.avatar,
+        verified: false,
+        emailVerified: true,
+        mfaEnabled: false,
+        backupCodes: [],
+        loginAttempts: 0,
+        tokenVersion: 0,
+        rating: 0,
+        reviewCount: 0,
+        responseRate: 0,
+        salesCount: 0,
+        purchaseCount: 0,
+        memberSince: new Date(),
+      });
+    }
+
+    await this.activityLogRepo.create({
+      userId: user.id,
+      action: 'login_google',
       ipAddress,
       userAgent,
       status: 'success',

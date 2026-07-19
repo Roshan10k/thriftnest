@@ -11,6 +11,7 @@ import { JwtTokenService } from '../../infrastructure/services/JwtTokenService';
 import { NodemailerEmailService } from '../../infrastructure/services/NodemailerEmailService';
 import { OtplibMfaService } from '../../infrastructure/services/OtplibMfaService';
 import { AesCryptoService } from '../../infrastructure/services/AesCryptoService';
+import { GoogleOAuthService } from '../../infrastructure/services/GoogleOAuthService';
 import { LocalStorageService } from '../../infrastructure/services/LocalStorageService';
 
 const router = Router();
@@ -33,10 +34,12 @@ const userService = new UserService(
   new BcryptHashService(),
 );
 
-const ctrl = new AuthController(service, userService);
+const ctrl = new AuthController(service, userService, new GoogleOAuthService());
 
 router.post('/register', authRateLimit, ctrl.register);
 router.post('/login', authRateLimit, ctrl.login);
+router.get('/oauth/google', authRateLimit, ctrl.oauthGoogleStart);
+router.get('/oauth/google/callback', ctrl.oauthGoogleCallback);
 router.post('/refresh', ctrl.refreshToken);
 router.post('/logout', authenticate, ctrl.logout);
 router.get('/me', authenticate, ctrl.me);

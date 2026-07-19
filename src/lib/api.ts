@@ -1,5 +1,10 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api';
 
+// Full-page navigation target that kicks off the Google OAuth flow on the
+// backend (which then redirects to Google, then back to the SPA). This is a
+// browser redirect, not an XHR, so it is a plain URL rather than a fetch call.
+export const googleLoginUrl = `${BASE_URL}/auth/oauth/google`;
+
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 // CSRF token for the double-submit-cookie scheme. The server sets a matching
