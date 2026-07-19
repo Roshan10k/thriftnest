@@ -24,6 +24,7 @@ function toEntity(doc: NonNullable<Awaited<ReturnType<typeof UserModel.findById>
     loginAttempts: obj.loginAttempts as number,
     lockUntil: obj.lockUntil as Date | undefined,
     tokenVersion: (obj.tokenVersion as number) ?? 0,
+    passwordChangedAt: obj.passwordChangedAt as Date | undefined,
     rating: obj.rating as number,
     reviewCount: obj.reviewCount as number,
     responseRate: obj.responseRate as number,

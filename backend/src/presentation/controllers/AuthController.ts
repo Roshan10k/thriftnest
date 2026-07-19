@@ -5,13 +5,26 @@ import { UserService } from '../../application/services/UserService';
 import { RegisterDto, LoginDto, VerifyMfaSetupDto } from '../../application/dtos/auth.dto';
 
 const isProduction = process.env.NODE_ENV === 'production';
-const ACCESS_MAX_AGE = 15 * 60 * 1000; // 15 minutes
-const REFRESH_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+// Long-lived access token (15 days). This is safe here because the authenticate
+// middleware re-checks the token's version against the database on every request,
+// so logout / suspension / a credential change revokes the token immediately
+// regardless of its natural expiry — token lifetime is NOT relied on as a
+// security control (that role is filled by CSRF tokens, CSP, HttpOnly cookies,
+// input validation, etc.).
+const ACCESS_MAX_AGE = 15 * 24 * 60 * 60 * 1000; // 15 days
+const REFRESH_MAX_AGE = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // HttpOnly cookies keep tokens out of reach of client-side JavaScript (XSS).
-// SameSite=Lax blocks cross-site sends; Secure is enabled outside development.
+// SameSite=Strict means these cookies are sent only on same-site requests —
+// not even on a top-level GET navigation arriving from an external site (the
+// one gap Lax leaves open). Secure is enabled outside development. This is
+// safe to set to Strict specifically because the frontend and backend are
+// same-site (they share a registrable domain in production, and Chrome/Firefox
+// treat different localhost ports as same-site too), so ordinary same-origin
+// API calls are unaffected — the only cost is a session cookie not being sent
+// on the very first top-level navigation after clicking an external link.
 function baseCookie() {
-  return { httpOnly: true, secure: isProduction, sameSite: 'lax' as const, path: '/' };
+  return { httpOnly: true, secure: isProduction, sameSite: 'strict' as const, path: '/' };
 }
 
 function setAuthCookies(res: Response, tokens: { accessToken: string; refreshToken: string }) {

@@ -5,7 +5,7 @@ import type { ITokenService } from '../interfaces/ITokenService';
 import type { IEmailService } from '../interfaces/IEmailService';
 import type { IMfaService } from '../interfaces/IMfaService';
 import type { ICryptoService } from '../interfaces/ICryptoService';
-import { isLocked, incrementLoginAttempts } from '../../domain/entities/User';
+import { isLocked, incrementLoginAttempts, isPasswordExpired } from '../../domain/entities/User';
 import type { RegisterDtoType, LoginDtoType, VerifyMfaSetupDtoType } from '../dtos/auth.dto';
 import { AppError } from '../errors/AppError';
 
@@ -111,6 +111,21 @@ export class AuthService {
         status: 'failed',
       });
       throw new AppError('Your account has been suspended. Please contact support.', 403);
+    }
+
+    // Password expiry (90 days). Blocking here rather than allowing login with
+    // a stale password reuses the existing forgot-password/OTP flow as the
+    // remediation path, rather than building a second "change password before
+    // continuing" flow for what should be a rare event.
+    if (isPasswordExpired(user)) {
+      await this.activityLogRepo.create({
+        userId: user.id,
+        action: 'login_blocked_password_expired',
+        ipAddress,
+        userAgent,
+        status: 'failed',
+      });
+      throw new AppError('Your password has expired and must be reset. Please use "Forgot password" to set a new one.', 403);
     }
 
     if (user.mfaEnabled) {
@@ -261,9 +276,14 @@ export class AuthService {
 
     const passwordHash = await this.hashService.hash(newPassword);
     const passwordHistory = previousHashes.slice(0, 5);
-    await this.userRepo.update(user.id, { passwordHash, passwordHistory });
+    await this.userRepo.update(user.id, { passwordHash, passwordHistory, passwordChangedAt: new Date() });
     await this.userRepo.clearPasswordResetOtp(email);
     await this.userRepo.resetLoginAttempts(user.id);
+    // A password reset is exactly the situation session revocation exists
+    // for — it typically means the account may have been compromised, so any
+    // session established before the reset (e.g. an attacker's) must not
+    // survive it.
+    await this.userRepo.incrementTokenVersion(user.id);
 
     await this.activityLogRepo.create({
       userId: user.id,

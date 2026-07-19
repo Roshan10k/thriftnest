@@ -33,10 +33,13 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction):
   // res.locals so the GET /api/csrf-token endpoint can hand it to the SPA.
   if (!token) {
     token = randomBytes(32).toString('hex');
+    // Strict is safe here: this cookie is only ever read via same-origin
+    // fetch calls from our own SPA, never involved in a redirect-based flow,
+    // unlike the OAuth state cookie in AuthController.ts.
     res.cookie(CSRF_COOKIE, token, {
       httpOnly: false,
       secure: isProduction,
-      sameSite: 'lax',
+      sameSite: 'strict',
       path: '/',
     });
   }

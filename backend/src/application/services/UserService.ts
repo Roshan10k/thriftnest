@@ -62,7 +62,7 @@ export class UserService {
     const passwordHash = await this.hashService.hash(dto.newPassword);
     // Keep the last PASSWORD_HISTORY_SIZE hashes (the just-replaced one first).
     const passwordHistory = previousHashes.slice(0, PASSWORD_HISTORY_SIZE);
-    await this.userRepo.update(userId, { passwordHash, passwordHistory });
+    await this.userRepo.update(userId, { passwordHash, passwordHistory, passwordChangedAt: new Date() });
   }
 
   async deleteAccount(userId: string, password: string) {

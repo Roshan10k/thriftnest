@@ -19,6 +19,7 @@ export interface UserDocument extends Document {
   loginAttempts: number;
   lockUntil?: Date;
   tokenVersion: number;
+  passwordChangedAt?: Date;
   passwordResetOtp?: string;
   passwordResetExpiry?: Date;
   rating: number;
@@ -51,6 +52,7 @@ const userSchema = new Schema<UserDocument>(
     loginAttempts: { type: Number, default: 0 },
     lockUntil: { type: Date },
     tokenVersion: { type: Number, default: 0 },
+    passwordChangedAt: { type: Date, default: Date.now },
     passwordResetOtp: { type: String, select: false },
     passwordResetExpiry: { type: Date, select: false },
     rating: { type: Number, default: 0, min: 0, max: 5 },
