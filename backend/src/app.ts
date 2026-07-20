@@ -9,6 +9,7 @@ import { globalRateLimit } from './presentation/middleware/rateLimit';
 import { csrfProtection } from './presentation/middleware/csrf';
 import { mongoSanitize } from './presentation/middleware/mongoSanitize';
 import { errorHandler } from './presentation/middleware/errorHandler';
+import { handleStripeWebhook } from './presentation/controllers/PaymentWebhookController';
 
 import authRoutes from './presentation/routes/auth.routes';
 import userRoutes from './presentation/routes/user.routes';
@@ -74,10 +75,19 @@ app.use(
   }),
 );
 
-// Logging
+// Logging — placed before the Stripe webhook route below so every request,
+// including that one, is logged (nothing should be able to reach this API
+// unlogged).
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan('dev'));
 }
+
+// Stripe webhook: registered before the global JSON body parser and CSRF
+// middleware below, because it needs the exact raw request bytes to verify
+// Stripe's signature, and it's called by Stripe's servers directly rather
+// than a browser, so CSRF protection (a browser-forged-request defence)
+// doesn't apply to it.
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), handleStripeWebhook);
 
 // Request parsing
 app.use(express.json({ limit: '10mb' }));

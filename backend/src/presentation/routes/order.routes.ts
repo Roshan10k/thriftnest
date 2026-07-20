@@ -8,6 +8,7 @@ import { MongoTransactionRepository } from '../../infrastructure/repositories/Mo
 import { MongoNotificationRepository } from '../../infrastructure/repositories/MongoNotificationRepository';
 import { MongoMessageRepository } from '../../infrastructure/repositories/MongoMessageRepository';
 import { NodemailerEmailService } from '../../infrastructure/services/NodemailerEmailService';
+import { StripePaymentService } from '../../infrastructure/services/StripePaymentService';
 
 const router = Router();
 
@@ -18,6 +19,7 @@ const service = new OrderService(
   new MongoNotificationRepository(),
   new NodemailerEmailService(),
   new MongoMessageRepository(),
+  new StripePaymentService(),
 );
 const ctrl = new OrderController(service);
 
