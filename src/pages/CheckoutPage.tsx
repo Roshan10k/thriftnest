@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useParams, Link, useNavigate, useLocation } from 'react-router-dom';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { Check, Truck, MapPin, Shield, Clock } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
 import { Footer } from '../components/layout/Footer';
@@ -7,6 +8,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
 import { listingsApi, ordersApi } from '../lib/api';
+import { stripePromise } from '../lib/stripe';
 import { toListing } from '../lib/mappers';
 import { useApi } from '../hooks/useApi';
 import { useAuth } from '../contexts/AuthContext';
@@ -14,16 +16,84 @@ import { useConfirm } from '../contexts/ConfirmContext';
 
 type Step = 1 | 2 | 3 | 4;
 
+// Renders once the order (and its Stripe PaymentIntent) already exist. Card
+// details are entered directly into Stripe's own hosted Payment Element and
+// confirmed straight to Stripe — they never pass through our server.
+function StripeCheckoutForm({
+  total,
+  listingTitle,
+  onSuccess,
+}: {
+  total: number;
+  listingTitle: string;
+  onSuccess: () => void;
+}) {
+  const stripe = useStripe();
+  const elements = useElements();
+  const confirm = useConfirm();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const handlePay = async () => {
+    if (!stripe || !elements) return;
+    const { confirmed } = await confirm({
+      title: 'Confirm your payment',
+      message: `You are about to pay NPR ${total.toLocaleString()} for "${listingTitle}". Continue?`,
+      confirmLabel: `Pay NPR ${total.toLocaleString()}`,
+    });
+    if (!confirmed) return;
+
+    setSubmitting(true);
+    setError(null);
+    const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
+      elements,
+      redirect: 'if_required',
+    });
+    setSubmitting(false);
+
+    if (stripeError) {
+      setError(stripeError.message ?? 'Payment failed. Please check your card details and try again.');
+      return;
+    }
+    if (paymentIntent?.status === 'succeeded') {
+      onSuccess();
+    } else {
+      setError('Payment did not complete. Please try again.');
+    }
+  };
+
+  return (
+    <div>
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-thrift-error/10 border border-thrift-error/30 text-sm text-thrift-error">
+          {error}
+        </div>
+      )}
+      <div className="p-4 bg-thrift-bg rounded-lg mb-6">
+        <PaymentElement />
+      </div>
+      <div className="flex items-center gap-2 p-3 bg-thrift-success/10 rounded-lg mb-6">
+        <Shield className="w-4 h-4 text-thrift-success" />
+        <p className="text-sm text-thrift-success">Card details go straight to Stripe — they never touch our servers</p>
+      </div>
+      <Button className="w-full" loading={submitting} disabled={!stripe} onClick={handlePay}>
+        {submitting ? 'Processing…' : `Pay NPR ${total.toLocaleString()}`}
+      </Button>
+    </div>
+  );
+}
+
 export function CheckoutPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user: authUser } = useAuth();
-  const confirm = useConfirm();
   const negotiated = (location.state ?? {}) as { agreedPrice?: number; conversationId?: string };
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     deliveryMethod: 'standard' as 'standard' | 'express' | 'pickup',
     address: {
@@ -34,9 +104,6 @@ export function CheckoutPage() {
       district: '',
       postalCode: '',
     },
-    cardNumber: '',
-    cardExpiry: '',
-    cardCvc: '',
   });
 
   const { data: listing, loading: listingLoading } = useApi(
@@ -204,7 +271,8 @@ export function CheckoutPage() {
                   <Button variant="outline" onClick={() => setStep(1)}>Back</Button>
                   <Button
                     className="flex-1"
-                    onClick={() => {
+                    loading={submitting}
+                    onClick={async () => {
                       const a = formData.address;
                       if (a.fullName.trim().length < 2) return setError('Please enter your full name.');
                       if (a.phone.trim().length < 10) return setError('Please enter a valid phone number (at least 10 digits).');
@@ -213,59 +281,15 @@ export function CheckoutPage() {
                       if (a.district.trim().length < 2) return setError('Please enter your district.');
                       if (a.postalCode.trim().length < 4) return setError('Please enter a valid postal code.');
                       setError(null);
-                      setStep(3);
-                    }}
-                  >
-                    Continue to Payment
-                  </Button>
-                </div>
-              </div>
-            )}
 
-            {step === 3 && (
-              <div className="bg-thrift-surface border border-thrift-border rounded-card p-6 fade-in">
-                <h2 className="font-semibold text-thrift-text mb-4">Payment</h2>
+                      // Already created (e.g. the buyer went Back then Forward
+                      // again) — reuse it instead of creating a second order.
+                      if (clientSecret) {
+                        setStep(3);
+                        return;
+                      }
 
-                {error && (
-                  <div className="mb-4 p-3 rounded-lg bg-thrift-error/10 border border-thrift-error/30 text-sm text-thrift-error">
-                    {error}
-                  </div>
-                )}
-
-                <div className="p-4 bg-thrift-bg rounded-lg mb-6">
-                  <div className="space-y-3">
-                    <Input label="Card Number" placeholder="4242 4242 4242 4242" value={formData.cardNumber} onChange={(e) => setFormData({ ...formData, cardNumber: e.target.value })} />
-                    <div className="grid grid-cols-2 gap-4">
-                      <Input label="Expiry Date" placeholder="MM/YY" value={formData.cardExpiry} onChange={(e) => setFormData({ ...formData, cardExpiry: e.target.value })} />
-                      <Input label="CVC" placeholder="123" value={formData.cardCvc} onChange={(e) => setFormData({ ...formData, cardCvc: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-3 mb-6">
-                  <button className="p-3 bg-orange-500 text-white rounded-btn font-medium flex items-center justify-center gap-2">eSewa</button>
-                  <button className="p-3 bg-purple-600 text-white rounded-btn font-medium flex items-center justify-center gap-2">Khalti</button>
-                </div>
-
-                <div className="flex items-center gap-2 p-3 bg-thrift-success/10 rounded-lg mb-6">
-                  <Shield className="w-4 h-4 text-thrift-success" />
-                  <p className="text-sm text-thrift-success">Your payment is encrypted and secure</p>
-                </div>
-
-                <div className="flex gap-4">
-                  <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-                  <Button
-                    className="flex-1"
-                    loading={submitting}
-                    onClick={async () => {
-                      const { confirmed } = await confirm({
-                        title: 'Confirm your payment',
-                        message: `You are about to pay NPR ${total.toLocaleString()} for "${listing.title}". Continue?`,
-                        confirmLabel: `Pay NPR ${total.toLocaleString()}`,
-                      });
-                      if (!confirmed) return;
                       setSubmitting(true);
-                      setError(null);
                       try {
                         const order = await ordersApi.create({
                           listingId: listing.id,
@@ -274,19 +298,41 @@ export function CheckoutPage() {
                           paymentMethod: 'stripe',
                           conversationId: negotiated.conversationId,
                         });
-                        const orderId = String((order.data as Record<string, unknown>).id ?? '');
-                        setStep(4);
-                        if (orderId) navigate(`/orders/${orderId}`);
+                        const data = order.data as Record<string, unknown>;
+                        setOrderId(String(data.id ?? ''));
+                        setClientSecret(String(data.clientSecret ?? ''));
+                        setStep(3);
                       } catch (err) {
-                        setError(err instanceof Error ? err.message : 'Could not place your order. Please try again.');
+                        setError(err instanceof Error ? err.message : 'Could not start checkout. Please try again.');
                       } finally {
                         setSubmitting(false);
                       }
                     }}
                   >
-                    {submitting ? 'Processing…' : `Pay NPR ${total.toLocaleString()}`}
+                    {submitting ? 'Placing order…' : 'Continue to Payment'}
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {step === 3 && (
+              <div className="bg-thrift-surface border border-thrift-border rounded-card p-6 fade-in">
+                <h2 className="font-semibold text-thrift-text mb-4">Payment</h2>
+                {clientSecret ? (
+                  <Elements stripe={stripePromise} options={{ clientSecret }}>
+                    <StripeCheckoutForm
+                      total={total}
+                      listingTitle={listing.title}
+                      onSuccess={() => {
+                        setStep(4);
+                        if (orderId) navigate(`/orders/${orderId}`);
+                      }}
+                    />
+                  </Elements>
+                ) : (
+                  <p className="text-thrift-text-secondary">Preparing payment…</p>
+                )}
+                <Button variant="outline" className="mt-4" onClick={() => setStep(2)}>Back</Button>
               </div>
             )}
 

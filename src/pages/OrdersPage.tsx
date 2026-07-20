@@ -33,16 +33,6 @@ export function OrdersPage() {
   );
   const allOrders: Order[] = ordersData ?? [];
 
-  const [payingId, setPayingId] = useState<string | null>(null);
-  const handlePay = async (orderId: string) => {
-    setPayingId(orderId);
-    try {
-      await ordersApi.updateStatus(orderId, { status: 'payment-confirmed' });
-      await refetch();
-    } catch { /* keep the order in pending state on failure */ }
-    finally { setPayingId(null); }
-  };
-
   const [deliveringId, setDeliveringId] = useState<string | null>(null);
   const handleMarkDelivered = async (orderId: string) => {
     setDeliveringId(orderId);
@@ -174,15 +164,6 @@ export function OrdersPage() {
                                 Leave Review
                               </Button>
                             </Link>
-                          )}
-                          {order.status === 'payment-pending' && (
-                            <Button
-                              size="sm"
-                              loading={payingId === order.id}
-                              onClick={() => handlePay(order.id)}
-                            >
-                              {payingId === order.id ? 'Processing…' : 'Complete Payment'}
-                            </Button>
                           )}
                           <Link to={`/orders/${order.id}`}>
                             <Button size="sm" variant="outline">

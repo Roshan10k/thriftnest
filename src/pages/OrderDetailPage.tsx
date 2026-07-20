@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Truck, Package, CheckCircle, MapPin, Star, MessageCircle, Download, Shield } from 'lucide-react';
 import { Navbar } from '../components/layout/Navbar';
@@ -51,16 +51,13 @@ export function OrderDetailPage() {
     [id],
   );
 
-  const [paying, setPaying] = useState(false);
-  const handlePay = async () => {
-    if (!order) return;
-    setPaying(true);
-    try {
-      await ordersApi.updateStatus(order.id, { status: 'payment-confirmed' });
-      await refetch();
-    } catch { /* keep pending on failure */ }
-    finally { setPaying(false); }
-  };
+  // Payment confirmation now arrives asynchronously from Stripe's webhook, so
+  // poll briefly while waiting rather than requiring a manual page refresh.
+  useEffect(() => {
+    if (order?.status !== 'payment-pending') return;
+    const interval = setInterval(refetch, 3000);
+    return () => clearInterval(interval);
+  }, [order?.status, refetch]);
 
   const [delivering, setDelivering] = useState(false);
   const handleMarkDelivered = async () => {
@@ -295,9 +292,9 @@ export function OrderDetailPage() {
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
           {order.status === 'payment-pending' && isBuyer && (
-            <Button loading={paying} onClick={handlePay}>
-              {paying ? 'Processing…' : `Complete Payment · NPR ${order.totalAmount.toLocaleString()}`}
-            </Button>
+            <p className="text-sm text-thrift-text-secondary">
+              Payment is being processed by Stripe. This page updates automatically once it's confirmed.
+            </p>
           )}
           {order.status === 'shipped' && isBuyer && (
             <Button loading={delivering} onClick={handleMarkDelivered} icon={<CheckCircle className="w-4 h-4" />}>
